@@ -50,7 +50,7 @@ Random Forest (Fraud Classification)
 Adaptive Risk Engine
         ↓
 Explainability & Action Layer
-
+```
 
 ---
 
@@ -77,18 +77,26 @@ Explainability & Action Layer
 ## ▶️ Installation & How to Run the Project
 
 1️⃣ Clone the repository
+```bash
 git clone https://github.com/PranitaKute/Techfiesta-Pict-2025.git
 cd Fraud_Detection_V2
+```
 
 2️⃣ Create virtual environment (Python 3.10 recommended)
+```bash
 py -3.10 -m venv venv
 venv\Scripts\activate
+```
 
 3️⃣ Install required libraries
+```bash
 pip install -r requirements.txt
+```
 
 4️⃣ Run the application
+```bash
 streamlit run app.py
+```
 
 🔍 Explainability
 

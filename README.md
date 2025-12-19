@@ -100,34 +100,34 @@ streamlit run app.py
 
 🔍 Explainability
 
-To ensure trust and transparency, the system explains every fraud decision using:
+- To ensure trust and transparency, the system explains every fraud decision using:
 
-Behaviour-based anomaly scores
+- Behaviour-based anomaly scores
 
-Model-generated risk probabilities
+- Model-generated risk probabilities
 
-Simple, human-readable reasons
+- Simple, human-readable reasons
 
-Recommended actions such as Allow / OTP / Block
+- Recommended actions such as Allow / OTP / Block
 
 🔐 Ethics & Security Considerations
 
-No personal or sensitive user data is exposed
+- No personal or sensitive user data is exposed
 
-All risk decisions are explainable
+- All risk decisions are explainable
 
-Designed to minimize bias and reduce false positives
+- Designed to minimize bias and reduce false positives
 
-Secure and controlled model execution
+- Secure and controlled model execution
 
 🔮 Future Enhancements
 
-Real-time transaction streaming using Kafka
+- Real-time transaction streaming using Kafka
 
-Microservices using FastAPI
+- Microservices using FastAPI
 
-Full cloud deployment
+- Full cloud deployment
 
-Automated model retraining pipelines
+- Automated model retraining pipelines
 
-Role-based dashboards for banks and admins
+- Role-based dashboards for banks and admins

@@ -38,17 +38,17 @@ Our system:
 ---
 
 ## 🧠 System Architecture
-
+```text
 User Transaction
-    ↓
+        ↓
 Feature Engineering Layer
-    ↓
+        ↓
 Autoencoder (Anomaly Detection)
-    +
+        +
 Random Forest (Fraud Classification)
-    ↓
+        ↓
 Adaptive Risk Engine
-    ↓
+        ↓
 Explainability & Action Layer
 
 
@@ -76,22 +76,18 @@ Explainability & Action Layer
 
 ## ▶️ Installation & How to Run the Project
 
-### 1️⃣ Clone the repository
-```bash
+1️⃣ Clone the repository
 git clone https://github.com/PranitaKute/Techfiesta-Pict-2025.git
 cd Fraud_Detection_V2
 
-### 2️⃣ Create virtual environment (Python 3.10 recommended)
-```bash
+2️⃣ Create virtual environment (Python 3.10 recommended)
 py -3.10 -m venv venv
 venv\Scripts\activate
 
-### 3️⃣ Install required libraries
-```bash
+3️⃣ Install required libraries
 pip install -r requirements.txt
 
-### 4️⃣ Run the application
-```bash
+4️⃣ Run the application
 streamlit run app.py
 
 🔍 Explainability
@@ -127,4 +123,3 @@ Full cloud deployment
 Automated model retraining pipelines
 
 Role-based dashboards for banks and admins
-

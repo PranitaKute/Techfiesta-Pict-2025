@@ -1,6 +1,6 @@
 # AI-Based Fraud Detection System
 
-## 📌 Problem Statement
+## Problem Statement
 
 Financial fraud is a major challenge for banks and digital payment systems. Every year, financial institutions lose huge amounts of money due to fraudulent transactions.
 
@@ -12,7 +12,7 @@ Most traditional fraud detection systems are rule-based, which means:
 
 ---
 
-## ✅ Our Approach
+## Our Approach
 
 To solve this problem, we designed an adaptive AI-based fraud detection system that works in real time and focuses on risk assessment instead of yes/no decisions.
 
@@ -25,7 +25,7 @@ Our system:
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 - Risk-Based Fraud Scoring instead of binary labels  
 - Hybrid AI Model  
@@ -37,7 +37,7 @@ Our system:
 
 ---
 
-## 🧠 System Architecture
+## System Architecture
 ```text
 User Transaction
         ↓
@@ -54,7 +54,7 @@ Explainability & Action Layer
 
 ---
 
-## 📊 Dataset Strategy
+## Dataset Strategy
 
 - Transaction data is designed based on real-world banking behavior  
 - Synthetic data is generated to handle rare and edge fraud cases  
@@ -63,7 +63,7 @@ Explainability & Action Layer
 
 ---
 
-## ⚙️ Tech Stack Used
+## Tech Stack Used
 
 - Frontend: Streamlit  
 - Machine Learning Models: Random Forest, Autoencoder using TensorFlow  
@@ -74,31 +74,31 @@ Explainability & Action Layer
 
 ---
 
-## ▶️ Installation & How to Run the Project
+## Installation & How to Run the Project
 
-1️⃣ Clone the repository
+1️. Clone the repository
 ```bash
 git clone https://github.com/PranitaKute/Techfiesta-Pict-2025.git
 cd Fraud_Detection_V2
 ```
 
-2️⃣ Create virtual environment (Python 3.10 recommended)
+2️. Create virtual environment (Python 3.10 recommended)
 ```bash
 py -3.10 -m venv venv
 venv\Scripts\activate
 ```
 
-3️⃣ Install required libraries
+3️. Install required libraries
 ```bash
 pip install -r requirements.txt
 ```
 
-4️⃣ Run the application
+4️. Run the application
 ```bash
 streamlit run app.py
 ```
 
-🔍 Explainability
+Explainability
 
 - To ensure trust and transparency, the system explains every fraud decision using:
 
@@ -110,7 +110,7 @@ streamlit run app.py
 
 - Recommended actions such as Allow / OTP / Block
 
-🔐 Ethics & Security Considerations
+Ethics & Security Considerations
 
 - No personal or sensitive user data is exposed
 
@@ -120,7 +120,7 @@ streamlit run app.py
 
 - Secure and controlled model execution
 
-🔮 Future Enhancements
+Future Enhancements
 
 - Real-time transaction streaming using Kafka
 

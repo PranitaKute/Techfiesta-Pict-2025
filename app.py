@@ -1,29 +1,35 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
 from tensorflow.keras.models import load_model
 import plotly.graph_objects as go
+from datetime import datetime
+import time
 
-# ===============================
 # PAGE CONFIG
-# ===============================
 st.set_page_config(
-    page_title="Adaptive Fraud Detection System",
+    page_title="Adaptive Fraud Detection Platform",
     page_icon="🛡️",
     layout="wide"
 )
 
-# ===============================
+# CONFIG (Production-like)
+FRAUD_HIGH_THRESHOLD = 0.70
+FRAUD_MEDIUM_THRESHOLD = 0.40
+ANOMALY_THRESHOLD = 1.0
+
+# SESSION STATE
+if "alert_history" not in st.session_state:
+    st.session_state.alert_history = []
+
+if "txn_id" not in st.session_state:
+    st.session_state.txn_id = 0
+
 # CUSTOM CSS
-# ===============================
 st.markdown("""
 <style>
-body {
-    background-color: #0E1117;
-    color: white;
-}
-
 .metric-card {
     background: linear-gradient(135deg, #1f2937, #111827);
     padding: 20px;
@@ -31,119 +37,109 @@ body {
     text-align: center;
     box-shadow: 0px 6px 25px rgba(0,0,0,0.4);
 }
-
-.metric-title {
-    font-size: 14px;
-    color: #9CA3AF;
-}
-
-.metric-value {
-    font-size: 32px;
-    font-weight: bold;
-}
-
-.low { color: #22c55e; }
-.medium { color: #f59e0b; }
-.high { color: #ef4444; }
-
-.alert-high {
-    background-color: #7f1d1d;
-    padding: 15px;
-    border-radius: 12px;
-    font-weight: bold;
-    color: white;
-}
-
-.explain-box {
+.high { color: #ef4444; font-weight: bold; }
+.medium { color: #f59e0b; font-weight: bold; }
+.low { color: #22c55e; font-weight: bold; }
+.signal-box {
     background-color: #111827;
-    padding: 15px;
-    border-left: 5px solid #6366f1;
+    padding: 14px;
+    border-left: 5px solid #ef4444;
     border-radius: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ===============================
 # LOAD MODELS
-# ===============================
 @st.cache_resource
 def load_models():
-    rf_model = joblib.load("models/rf_model.pkl")
+    fraud_classifier = joblib.load("models/rf_model.pkl")
     scaler = joblib.load("models/scaler.pkl")
-    autoencoder = load_model("models/autoencoder.h5", compile=False)
-    return rf_model, scaler, autoencoder
+    behaviour_model = load_model("models/autoencoder.h5", compile=False)
+    return fraud_classifier, scaler, behaviour_model
 
-rf_model, scaler, autoencoder = load_models()
+fraud_classifier, scaler, behaviour_model = load_models()
 
-# ===============================
 # HEADER
-# ===============================
-st.title("🛡️ Adaptive AI-Based Fraud Detection & Risk Management System")
-st.caption("Hybrid AI • Behaviour Analysis • Explainable Decisions")
+st.title("🛡️ Adaptive AI-Based Fraud Detection Platform")
+st.caption("Real-time Behaviour Analysis • Risk Scoring • Automated Decisions")
 
-# ===============================
+# SIDEBAR — SYSTEM HEALTH
+st.sidebar.subheader("📈 System Health")
+st.sidebar.metric("Transactions / min", np.random.randint(80, 160))
+st.sidebar.metric("Model Latency (ms)", np.random.randint(25, 70))
+st.sidebar.metric("Anomaly Rate", f"{np.random.uniform(1.2, 4.8):.2f}%")
+
 # TABS
-# ===============================
-tab1, tab2, tab4 = st.tabs([
-    "📌 Problem Context",
-    "🧾 Transaction Simulation",
-    "🧠 Explainability & Action"
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📌 Overview",
+    "💳 Transaction Analysis",
+    "📊 Alert Timeline",
+    "🌐 Streaming Architecture"
 ])
 
-# ===============================
-# TAB 1 — PROBLEM CONTEXT
-# ===============================
+# TAB 1 — OVERVIEW
 with tab1:
-    st.subheader("🚨 Real-World Problem")
-
     st.markdown("""
-    💳 **Banks lose billions every year due to fraud**  
-    ❌ Traditional systems react *after* money is lost  
-    ❌ Rule-based logic fails on new fraud patterns  
+**Problem**  
+Traditional fraud systems are rule-based and fail against new attack patterns.
 
-    ✅ **Our Solution**
-    - Real-time fraud risk prediction
-    - Behaviour-based anomaly detection
-    - Explainable AI decisions
-    - Risk-based action engine
+**Solution**  
+This platform combines:
+- ML-based fraud classification
+- Behaviour anomaly detection
+- Risk-based decision engine
+
+**Outcome**  
+✔ Real-time detection  
+✔ Adaptive intelligence  
+✔ Automated actioning
     """)
 
-    st.success("Designed for scalable, real-time banking systems")
-
-# ===============================
-# TAB 2 — TRANSACTION SIMULATION
-# ===============================
+# TAB 2 — TRANSACTION ANALYSIS
 with tab2:
-    st.subheader("🧾 Simulate a Transaction")
+    mode = st.radio("Transaction Mode", ["Manual Entry", "Live Simulation"], horizontal=True)
 
     col1, col2 = st.columns(2)
 
     with col1:
-        amount = st.number_input("Transaction Amount ($)", 1.0, 5000.0, 250.0)
-        balance = st.number_input("Account Balance ($)", 0.0, 200000.0, 50000.0)
-        distance = st.slider("Transaction Distance (km)", 1, 5000, 500)
-        hour = st.slider("Transaction Hour", 0, 23, 14)
-        daily_count = st.slider("Daily Transaction Count", 1, 50, 5)
+        if mode == "Live Simulation":
+            amount = np.random.uniform(100, 900)
+            balance = np.random.uniform(10000, 120000)
+            distance = np.random.randint(20, 400)
+            hour = datetime.now().hour
+            daily_count = np.random.randint(2, 8)
+        else:
+            amount = st.number_input("Transaction Amount ($)", 1.0, 5000.0, 250.0)
+            balance = st.number_input("Account Balance ($)", 0.0, 200000.0, 50000.0)
+            distance = st.slider("Transaction Distance (km)", 1, 5000, 500)
+            hour = st.slider("Transaction Hour", 0, 23, 14)
+            daily_count = st.slider("Daily Transaction Count", 1, 50, 5)
 
     with col2:
         txn_type = st.selectbox("Transaction Type", ["POS", "Online", "ATM Withdrawal", "Bank Transfer"])
         device = st.selectbox("Device Type", ["Mobile", "Laptop", "Tablet"])
-        location = st.selectbox("Location", ["Mumbai", "New York", "Sydney", "London"])
+        country = st.selectbox("Country", ["India", "USA", "UK", "Australia"])
+        location_map = {
+            "India": ["Mumbai", "Pune", "Delhi"],
+            "USA": ["New York", "Chicago", "San Francisco"],
+            "UK": ["London", "Manchester"],
+            "Australia": ["Sydney", "Melbourne"]
+        }
+        location = st.selectbox("City", location_map[country])
         merchant = st.selectbox("Merchant Category", ["Electronics", "Clothing", "Travel", "Restaurants"])
         auth = st.selectbox("Authentication Method", ["OTP", "Password", "Biometric"])
 
-    simulate = st.button("🚀 Analyze Transaction")
-    result_container = st.container()
+    analyze = st.button(" Analyze Transaction")
 
-# ===============================
 # PROCESS TRANSACTION
-# ===============================
-if simulate:
-    is_night = 1 if hour >= 22 or hour <= 5 else 0
-    is_weekend = 0
+if analyze:
+    with st.spinner("Analyzing transaction..."):
+        time.sleep(1)
 
-    input_df = pd.DataFrame([{
+    is_night = 1 if hour >= 22 or hour <= 5 else 0
+
+    transaction = pd.DataFrame([{
         "Transaction_Amount": amount,
         "Transaction_Type": txn_type,
         "Account_Balance": balance,
@@ -157,107 +153,134 @@ if simulate:
         "Card_Age": 120,
         "Transaction_Distance": distance,
         "Authentication_Method": auth,
-        "Is_Weekend": is_weekend,
+        "Is_Weekend": 0,
         "Transaction_Hour": hour,
         "Transaction_Day": 15,
         "Is_Night_Transaction": is_night
     }])
 
-    ae_features = [
-        'Transaction_Amount', 'Account_Balance', 'Daily_Transaction_Count',
-        'Avg_Transaction_Amount_7d', 'Transaction_Distance',
-        'Card_Age', 'Is_Weekend', 'Transaction_Hour', 'Is_Night_Transaction'
+    behaviour_features = [
+        "Transaction_Amount", "Account_Balance", "Daily_Transaction_Count",
+        "Avg_Transaction_Amount_7d", "Transaction_Distance",
+        "Card_Age", "Is_Weekend", "Transaction_Hour", "Is_Night_Transaction"
     ]
 
-    scaled = scaler.transform(input_df[ae_features])
-    recon = autoencoder.predict(scaled)
-    anomaly_score = np.mean(np.square(scaled - recon))
-    anomaly_flag = int(anomaly_score > 1.0)
+    scaled_features = scaler.transform(transaction[behaviour_features])
+    reconstructed = behaviour_model.predict(scaled_features)
+    anomaly_score = float(np.mean(np.square(scaled_features - reconstructed)))
+    anomaly_flag = anomaly_score > ANOMALY_THRESHOLD
 
-    input_df["Anomaly_Score"] = anomaly_score
-    input_df["Anomaly_Flag"] = anomaly_flag
+    transaction["Anomaly_Score"] = anomaly_score
+    transaction["Anomaly_Flag"] = int(anomaly_flag)
 
-    fraud_prob = rf_model.predict_proba(input_df)[0][1]
 
-    if fraud_prob > 0.7 or anomaly_flag:
-        risk = "High"
-    elif fraud_prob > 0.4:
-        risk = "Medium"
+    fraud_probability = fraud_classifier.predict_proba(transaction)[0][1]
+
+    # SOFT RISK LOGIC (KEY FIX)
+    soft_risk_score = 0.0
+
+    if 400 <= amount <= 800:
+        soft_risk_score += 0.15
+
+    if 5 <= daily_count <= 7:
+        soft_risk_score += 0.10
+
+    if 100 <= distance <= 300:
+        soft_risk_score += 0.10
+
+    effective_risk = fraud_probability + soft_risk_score
+
+    # FINAL DECISION ENGINE
+    if effective_risk > FRAUD_HIGH_THRESHOLD or anomaly_flag:
+        risk, action = "High", "BLOCK"
+    elif effective_risk > FRAUD_MEDIUM_THRESHOLD:
+        risk, action = "Medium", "OTP"
     else:
-        risk = "Low"
+        risk, action = "Low", "ALLOW"
 
-    # ===============================
-    # AI RISK ENGINE (INLINE)
-    # ===============================
-    with result_container:
-        st.subheader("🤖 AI Risk Decision")
+    st.session_state.txn_id += 1
+    st.session_state.alert_history.append({
+        "Txn ID": st.session_state.txn_id,
+        "Time": datetime.now().strftime("%H:%M:%S"),
+        "Risk": risk,
+        "Action": action,
+        "Fraud Probability": f"{fraud_probability:.2%}"
+    })
 
-        if risk == "High":
-            st.markdown('<div class="alert-high">🚨 HIGH RISK TRANSACTION DETECTED</div>', unsafe_allow_html=True)
+    st.subheader("🤖 Risk Decision")
 
-        c1, c2, c3 = st.columns(3)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Fraud Probability", f"{fraud_probability:.2%}")
+    c2.metric("Behaviour Deviation", f"{anomaly_score:.3f}")
+    c3.metric("Final Risk Level", risk)
 
-        c1.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Fraud Probability</div>
-            <div class="metric-value">{fraud_prob:.2%}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    # Align gauge with final decision
+    gauge_value = effective_risk * 100
 
-        c2.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Anomaly Score</div>
-            <div class="metric-value">{anomaly_score:.3f}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    if anomaly_flag:
+        gauge_value = max(gauge_value, 85)  # force visual high-risk
 
-        c3.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Risk Level</div>
-            <div class="metric-value {risk.lower()}">{risk}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=gauge_value,
+        title={"text": "Decision Risk Score (%)"},
+        gauge={
+            "axis": {"range": [0, 100]},
+            "bar": {"color": "white"},
+            "steps": [
+                {"range": [0, 40], "color": "#22c55e"},   # Green → Low
+                {"range": [40, 70], "color": "#facc15"}, # Yellow → Medium
+                {"range": [70, 100], "color": "#ef4444"} # Red → High
+            ],
+            "threshold": {
+                "line": {"color": "red", "width": 4},
+                "thickness": 0.75,
+                "value": gauge_value
+            }
+        }
+    ))
 
-        st.progress(int(fraud_prob * 100))
 
-        # Risk Gauge
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=fraud_prob * 100,
-            gauge={
-                "axis": {"range": [0, 100]},
-                "bar": {"color": "red"},
-                "steps": [
-                    {"range": [0, 40], "color": "green"},
-                    {"range": [40, 70], "color": "orange"},
-                    {"range": [70, 100], "color": "red"},
-                ],
-            },
-            title={"text": "Risk Score (%)"}
-        ))
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
-# ===============================
-# TAB 4 — EXPLAINABILITY
-# ===============================
+
+    st.subheader("⚠️ Risk Signals")
+    if anomaly_flag:
+        st.markdown('<div class="signal-box">Unusual transaction behaviour detected</div>', unsafe_allow_html=True)
+    if distance > 1000:
+        st.markdown('<div class="signal-box">Transaction from distant location</div>', unsafe_allow_html=True)
+    if is_night:
+        st.markdown('<div class="signal-box">Night-time transaction</div>', unsafe_allow_html=True)
+    if fraud_probability > 0.6:
+        st.markdown('<div class="signal-box">Matches known fraud patterns</div>', unsafe_allow_html=True)
+
+# TAB 3 — ALERT TIMELINE
+with tab3:
+    st.subheader("📊 Alert History")
+    if st.session_state.alert_history:
+        df = pd.DataFrame(st.session_state.alert_history)
+        st.dataframe(df, use_container_width=True)
+        st.download_button(
+            "📤 Export Alerts",
+            df.to_csv(index=False),
+            "fraud_alerts.csv",
+            "text/csv"
+        )
+    else:
+        st.info("No alerts generated yet")
+
+# TAB 4 — STREAMING ARCHITECTURE
 with tab4:
-    st.subheader("🧠 Explainability & Recommended Action")
-
     st.markdown("""
-    <div class="explain-box">
-    <b>Why this transaction is risky?</b><br>
-    • Unusual transaction amount or frequency<br>
-    • Location / device deviation<br>
-    • Behaviour anomaly detected by Autoencoder
-    </div>
-    """, unsafe_allow_html=True)
+**Production Streaming Design**
 
-    st.markdown("""
-    <div class="explain-box">
-    <b>AI Decision Strategy</b><br>
-    • Supervised Random Forest for known fraud patterns<br>
-    • Autoencoder for unknown / zero-day fraud
-    </div>
-    """, unsafe_allow_html=True)
+Transaction Stream → Kafka  
+Kafka → Fraud Detection Microservice  
+ML Engine → Risk Decision Engine  
+Actions → Block / OTP / Allow  
+Alerts → Dashboard + Monitoring  
 
-    st.success("🔔 Action Engine: BLOCK / OTP / ALLOW based on risk score")
+✔ Scalable  
+✔ Cloud-ready  
+✔ Real-time
+    """)

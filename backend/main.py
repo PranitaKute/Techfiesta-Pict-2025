@@ -13,6 +13,10 @@ Endpoints:
 import sys, os, asyncio, json
 from datetime import datetime
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env BEFORE importing anything else
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
@@ -170,6 +174,49 @@ async def simulate_transaction():
     txn = generate_live_transaction()
     result = await process_and_broadcast(txn)
     return {"transaction": txn, "result": result}
+
+
+@app.post("/api/transaction/user-initiated")
+async def user_initiated_transaction(txn_input: TransactionInput):
+    """User-initiated transaction (from demo form)."""
+    import random
+    txn = txn_input.dict()
+    
+    # Generate transaction ID and timestamp with better formatting
+    if not txn.get("transaction_id"):
+        # Use a 6-digit code after TXN for better readability
+        import random
+        random_suffix = random.randint(100000, 999999)
+        txn["transaction_id"] = f"TXN{random_suffix}"
+    if not txn.get("timestamp"):
+        txn["timestamp"] = datetime.utcnow().isoformat()
+    
+    # Fill missing fields with realistic defaults
+    if not txn.get("user_id"):
+        txn["user_id"] = random.randint(1000, 9999)
+    if not txn.get("distance_from_home_km"):
+        txn["distance_from_home_km"] = random.randint(0, 50)
+    if txn.get("device_mismatch") is None:
+        txn["device_mismatch"] = random.randint(0, 1)
+    if not txn.get("card_age_days"):
+        txn["card_age_days"] = random.randint(30, 1825)
+    if txn.get("transaction_hour") is None:
+        txn["transaction_hour"] = random.randint(0, 23)
+    if txn.get("transaction_day") is None:
+        txn["transaction_day"] = random.randint(0, 6)
+    if txn.get("is_weekend") is None:
+        txn["is_weekend"] = 1 if txn.get("transaction_day", 0) >= 5 else 0
+    if txn.get("is_night") is None:
+        txn["is_night"] = 1 if txn.get("transaction_hour", 12) in range(20, 24) or txn.get("transaction_hour", 12) in range(0, 6) else 0
+    if txn.get("daily_txn_count") is None:
+        txn["daily_txn_count"] = random.randint(1, 10)
+    if not txn.get("avg_amount_7d"):
+        txn["avg_amount_7d"] = txn.get("amount", 1000)
+    if not txn.get("amount_vs_avg_ratio"):
+        txn["amount_vs_avg_ratio"] = round(txn.get("amount", 1000) / max(txn.get("avg_amount_7d", 1), 1), 2)
+    
+    result = await process_and_broadcast(txn)
+    return {"transaction": txn, "result": result, "source": "user"}
 
 
 @app.get("/api/transactions")

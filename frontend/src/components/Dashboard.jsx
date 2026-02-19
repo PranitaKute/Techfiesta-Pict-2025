@@ -19,6 +19,14 @@ function fmt(amount) {
 }
 
 export default function Dashboard({ transactions = [], onSelect, selected }) {
+  // Ensure transactions are sorted by processed_at (ISO) or timestamp (newest first)
+  const toISO = (s) => (typeof s === "string" ? s.replace(" ", "T") : s);
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    const timeA = new Date(toISO(a.processed_at || a.timestamp || 0)).getTime() || 0;
+    const timeB = new Date(toISO(b.processed_at || b.timestamp || 0)).getTime() || 0;
+    return timeB - timeA; // Newest first
+  });
+
   return (
     <div className="card" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{
@@ -35,7 +43,7 @@ export default function Dashboard({ transactions = [], onSelect, selected }) {
           fontSize: "11px",
           color: "var(--muted)",
         }}>
-          {transactions.length} transactions
+          {sortedTransactions.length} transactions
         </span>
       </div>
 
@@ -63,7 +71,7 @@ export default function Dashboard({ transactions = [], onSelect, selected }) {
             </tr>
           </thead>
           <tbody>
-            {transactions.length === 0 && (
+            {sortedTransactions.length === 0 && (
               <tr>
                 <td colSpan={7} style={{
                   textAlign: "center",
@@ -75,7 +83,7 @@ export default function Dashboard({ transactions = [], onSelect, selected }) {
                 </td>
               </tr>
             )}
-            {transactions.map((txn, i) => {
+            {sortedTransactions.map((txn, i) => {
               const isSelected = selected?.transaction_id === txn.transaction_id;
               return (
                 <tr

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import StatsBar    from "./components/StatsBar.jsx";
 import RiskGauge   from "./components/RiskGauge.jsx";
 import ShapPanel   from "./components/ShapPanel.jsx";
@@ -7,6 +8,8 @@ import Dashboard   from "./components/Dashboard.jsx";
 import TransactionDetail from "./components/TransactionDetail.jsx";
 import SearchFilter from "./components/SearchFilter.jsx";
 import NewTransactionModal from "./components/NewTransactionModal.jsx";
+import TransactionsPage from "./pages/TransactionsPage";
+import AnalyticsPage    from "./pages/AnalyticsPage";
 
 const API = "http://localhost:8000";
 const WS  = "ws://localhost:8000/ws/stream";
@@ -186,195 +189,221 @@ export default function App() {
     try { window.history.pushState({}, "", "/"); } catch {}
   }
 
+  const sharedProps = {
+    transactions, selected, setSelected, stats,
+    wsStatus, streaming,
+    onToggleStream: toggleStream,
+    onInjectFraud:  injectFraud,
+    onSimulate:     simulateOne,
+  };
+
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "var(--bg)",
-      display: "flex",
-      flexDirection: "column",
-    }}>
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header style={{
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
-        padding: "0 24px",
-        height: "60px",
-        display: "flex",
-        alignItems: "center",
-        gap: "16px",
-        flexShrink: 0,
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-      }}>
-        {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={
           <div style={{
-            width: "36px", height: "36px",
-            background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-            borderRadius: "10px",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "18px", fontWeight: "900", color: "#fff",
-          }}>A</div>
-          <div>
-            <div style={{ fontWeight: "800", fontSize: "18px", letterSpacing: "-0.02em" }}>
-              ArgusAI
-            </div>
-            <div style={{ fontSize: "14px", color: "var(--muted)", marginTop: "-2px" }}>
-              Fraud Detection & Risk Management
-            </div>
-          </div>
-        </div>
-
-        {/* WS status */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: "6px",
-          background: "var(--surface2)",
-          padding: "4px 12px", borderRadius: "999px",
-          fontSize: "12px", color: statusColor[wsStatus],
-          border: `1px solid ${statusColor[wsStatus]}44`,
-        }}>
-          <span style={{
-            width: "6px", height: "6px", borderRadius: "50%",
-            background: statusColor[wsStatus],
-            animation: wsStatus === "connected" ? "blink 1.5s ease infinite" : "none",
-            display: "inline-block",
-          }} />
-          {wsStatus === "connected" ? "Live" : wsStatus}
-        </div>
-
-        <div style={{ flex: 1 }} />
-
-        {/* Control buttons */}
-        <button className="btn btn-primary" onClick={() => setShowNewTxnModal(true)} title="Initiate a new transaction">
-          💳 New Transaction
-        </button>
-        <button className="btn btn-ghost" onClick={simulateOne} title="Simulate one random transaction">
-          ⚡ Simulate
-        </button>
-        <button className="btn btn-danger" onClick={injectFraud} title="Inject a fraud transaction">
-          🚨 Inject Fraud
-        </button>
-        <button
-          className={`btn ${streaming ? "btn-ghost" : "btn-success"}`}
-          onClick={toggleStream}
-        >
-          {streaming ? "⏸ Pause" : "▶ Resume"} Stream
-        </button>
-      </header>
-
-      {/* ── Main content ───────────────────────────────────────────────── */}
-      <main style={{ flex: 1, padding: "20px 24px", display: "flex", flexDirection: "column" }}>
-
-        {/* Stats bar */}
-        <StatsBar stats={stats} />
-
-        {/* Search / Filter bar */}
-        <SearchFilter
-          transactions={transactions}
-          filterCriteria={filterCriteria}
-          onFilter={handleFilter}
-        />
-
-        {/* Alert banner (shows for OTP / BLOCK) */}
-        {selected && (selected.action === "OTP" || selected.action === "BLOCK") && (
-          <AlertBanner
-            transaction={selected}
-            onVerified={() => setSelected(null)}
-          />
-        )}
-
-        {/* Main 3-column layout */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "220px 1fr 280px",
-          gap: "16px",
-          flex: 1,
-          minHeight: 0,
-        }}>
-
-          {/* LEFT — Risk Gauge */}
-          <div className="card" style={{
+            minHeight: "100vh",
+            background: "var(--bg)",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "flex-start",
-            gap: "20px",
           }}>
-            <div style={{ fontWeight: "700", fontSize: "13px", color: "var(--muted)" }}>
-              CURRENT RISK
-            </div>
-            <RiskGauge
-              score={selected?.risk_score || 0}
-              action={selected?.action}
-            />
-
-            {/* Transaction quick-info */}
-            {selected && (
-              <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "8px" }}>
-                {[
-                  { label: "Amount",   value: `₹${Number(selected.amount || 0).toLocaleString("en-IN")}` },
-                  { label: "City",     value: selected.transaction_city || "—" },
-                  { label: "Method",   value: selected.payment_type || "—" },
-                  { label: "Device",   value: selected.device_type || "—" },
-                  { label: "Fraud %",  value: `${selected.fraud_prob || 0}%` },
-                  { label: "Anomaly",  value: selected.is_anomaly ? "⚠️ Yes" : "✅ No" },
-                ].map((item, i) => (
-                  <div key={i} style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "5px 8px",
-                    background: "var(--surface2)",
-                    borderRadius: "6px",
-                    fontSize: "11px",
-                  }}>
-                    <span style={{ color: "var(--muted)" }}>{item.label}</span>
-                    <span style={{ fontWeight: "600" }}>{item.value}</span>
+            {/* ── Header ─────────────────────────────────────────────────────── */}
+            <header style={{
+              background: "var(--surface)",
+              borderBottom: "1px solid var(--border)",
+              padding: "0 24px",
+              height: "60px",
+              display: "flex",
+              alignItems: "center",
+              gap: "16px",
+              flexShrink: 0,
+              position: "sticky",
+              top: 0,
+              zIndex: 100,
+            }}>
+              {/* Logo */}
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{
+                  width: "36px", height: "36px",
+                  background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+                  borderRadius: "10px",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "18px", fontWeight: "900", color: "#fff",
+                }}>A</div>
+                <div>
+                  <div style={{ fontWeight: "800", fontSize: "18px", letterSpacing: "-0.02em" }}>
+                    ArgusAI
                   </div>
-                ))}
+                  <div style={{ fontSize: "14px", color: "var(--muted)", marginTop: "-2px" }}>
+                    Fraud Detection & Risk Management
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
 
-          {/* CENTER — Live feed or detail */}
-          <div>
-            {window.location.pathname.startsWith("/txn/") ? (
-              <TransactionDetail transaction={selected} onBack={closeDetail} />
-            ) : (
-              <Dashboard
-                transactions={filteredTransactions}
-                onSelect={openTransaction}
-                selected={selected}
+              {/* WS status */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: "6px",
+                background: "var(--surface2)",
+                padding: "4px 12px", borderRadius: "999px",
+                fontSize: "12px", color: statusColor[wsStatus],
+                border: `1px solid ${statusColor[wsStatus]}44`,
+              }}>
+                <span style={{
+                  width: "6px", height: "6px", borderRadius: "50%",
+                  background: statusColor[wsStatus],
+                  animation: wsStatus === "connected" ? "blink 1.5s ease infinite" : "none",
+                  display: "inline-block",
+                }} />
+                {wsStatus === "connected" ? "Live" : wsStatus}
+              </div>
+
+              <nav style={{ display: "flex", gap: "4px", marginLeft: "12px" }}>
+                <Link to="/" style={{ padding: "6px 14px", borderRadius: "6px", textDecoration: "none", fontSize: "13px", color: "#fff", background: "var(--surface2)", border: "1px solid var(--border)" }}>
+                  📊 Dashboard
+                </Link>
+                <Link to="/transactions" style={{ padding: "6px 14px", borderRadius: "6px", textDecoration: "none", fontSize: "13px", color: "var(--muted)", background: "transparent", border: "1px solid transparent" }}>
+                  💳 Transactions
+                </Link>
+                <Link to="/analytics" style={{ padding: "6px 14px", borderRadius: "6px", textDecoration: "none", fontSize: "13px", color: "var(--muted)", background: "transparent", border: "1px solid transparent" }}>
+                  📈 Analytics
+                </Link>
+              </nav>
+
+              {/* Control buttons */}
+              <button className="btn btn-primary" onClick={() => setShowNewTxnModal(true)} title="Initiate a new transaction">
+                💳 New Transaction
+              </button>
+              <button className="btn btn-ghost" onClick={simulateOne} title="Simulate one random transaction">
+                ⚡ Simulate
+              </button>
+              <button className="btn btn-danger" onClick={injectFraud} title="Inject a fraud transaction">
+                🚨 Inject Fraud
+              </button>
+              <button
+                className={`btn ${streaming ? "btn-ghost" : "btn-success"}`}
+                onClick={toggleStream}
+              >
+                {streaming ? "⏸ Pause" : "▶ Resume"} Stream
+              </button>
+            </header>
+
+            {/* ── Main content ───────────────────────────────────────────────── */}
+            <main style={{ flex: 1, padding: "20px 24px", display: "flex", flexDirection: "column" }}>
+
+              {/* Stats bar */}
+              <StatsBar stats={stats} />
+
+              {/* Search / Filter bar */}
+              <SearchFilter
+                transactions={transactions}
+                filterCriteria={filterCriteria}
+                onFilter={handleFilter}
               />
-            )}
+
+              {/* Alert banner (shows for OTP / BLOCK) */}
+              {selected && (selected.action === "OTP" || selected.action === "BLOCK") && (
+                <AlertBanner
+                  transaction={selected}
+                  onVerified={() => setSelected(null)}
+                />
+              )}
+
+              {/* Main 3-column layout */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "220px 1fr 280px",
+                gap: "16px",
+                flex: 1,
+                minHeight: 0,
+              }}>
+
+                {/* LEFT — Risk Gauge */}
+                <div className="card" style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "flex-start",
+                  gap: "20px",
+                }}>
+                  <div style={{ fontWeight: "700", fontSize: "13px", color: "var(--muted)" }}>
+                    CURRENT RISK
+                  </div>
+                  <RiskGauge
+                    score={selected?.risk_score || 0}
+                    action={selected?.action}
+                  />
+
+                  {/* Transaction quick-info */}
+                  {selected && (
+                    <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {[
+                        { label: "Amount",   value: `₹${Number(selected.amount || 0).toLocaleString("en-IN")}` },
+                        { label: "City",     value: selected.transaction_city || "—" },
+                        { label: "Method",   value: selected.payment_type || "—" },
+                        { label: "Device",   value: selected.device_type || "—" },
+                        { label: "Fraud %",  value: `${selected.fraud_prob || 0}%` },
+                        { label: "Anomaly",  value: selected.is_anomaly ? "⚠️ Yes" : "✅ No" },
+                      ].map((item, i) => (
+                        <div key={i} style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          padding: "5px 8px",
+                          background: "var(--surface2)",
+                          borderRadius: "6px",
+                          fontSize: "11px",
+                        }}>
+                          <span style={{ color: "var(--muted)" }}>{item.label}</span>
+                          <span style={{ fontWeight: "600" }}>{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* CENTER — Live feed or detail */}
+                <div>
+                  {window.location.pathname.startsWith("/txn/") ? (
+                    <TransactionDetail transaction={selected} onBack={closeDetail} />
+                  ) : (
+                    <Dashboard
+                      transactions={filteredTransactions}
+                      onSelect={openTransaction}
+                      selected={selected}
+                    />
+                  )}
+                </div>
+
+                {/* RIGHT — SHAP */}
+                <ShapPanel explanations={selected?.shap_explanation} />
+              </div>
+
+              {/* ── Footer ──────────────────────────────────────────────────── */}
+              <div style={{
+                marginTop: "16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: "11px",
+                color: "var(--muted)",
+              }}>
+                <span>ArgusAI v1.0 — Hybrid XGBoost + Autoencoder Fraud Engine</span>
+                <span>
+                  Click any row to inspect &nbsp;|&nbsp; 🚨 Inject Fraud for live demo
+                </span>
+              </div>
+            </main>
+
+            {/* New Transaction Modal */}
+            <NewTransactionModal
+              isOpen={showNewTxnModal}
+              onClose={() => setShowNewTxnModal(false)}
+              cities={[...new Set(transactions.map(t => t.transaction_city).filter(Boolean))].sort()}
+            />
           </div>
-
-          {/* RIGHT — SHAP */}
-          <ShapPanel explanations={selected?.shap_explanation} />
-        </div>
-
-        {/* ── Footer ──────────────────────────────────────────────────── */}
-        <div style={{
-          marginTop: "16px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          fontSize: "11px",
-          color: "var(--muted)",
-        }}>
-          <span>ArgusAI v1.0 — Hybrid XGBoost + Autoencoder Fraud Engine</span>
-          <span>
-            Click any row to inspect &nbsp;|&nbsp; 🚨 Inject Fraud for live demo
-          </span>
-        </div>
-      </main>
-
-      {/* New Transaction Modal */}
-      <NewTransactionModal
-        isOpen={showNewTxnModal}
-        onClose={() => setShowNewTxnModal(false)}
-        cities={[...new Set(transactions.map(t => t.transaction_city).filter(Boolean))].sort()}
-      />
-    </div>
+        } />
+        <Route path="/transactions" element={<TransactionsPage {...sharedProps} />} />
+        <Route path="/analytics" element={<AnalyticsPage {...sharedProps} />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

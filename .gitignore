@@ -24,6 +24,7 @@ frontend/node_modules/
 dist/
 build/
 backend/*.db
+*.db
 ml/models/*.joblib
 ml/models/*.keras
 ml/models/*.h5

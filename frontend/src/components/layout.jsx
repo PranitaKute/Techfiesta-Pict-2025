@@ -1,10 +1,13 @@
 import { Link, useLocation } from 'react-router-dom'
+
 const navItems = [
+  { path: '/',             label: 'Dashboard',    icon: '📊' },
   { path: '/transactions', label: 'Transactions', icon: '💳' },
   { path: '/analytics',    label: 'Analytics',    icon: '📈' },
+  { path: '/razorpay',     label: 'Razorpay',     icon: '⚡' },
 ]
 
-export default function Layout({ children, streaming, onToggleStream, onInjectFraud, onSimulate, wsStatus }) {
+export default function Layout({ children, streaming, onToggleStream, onInjectFraud, onSimulate, onNewTransaction, wsStatus }) {
   const location = useLocation()
 
   const statusColor = {
@@ -21,6 +24,7 @@ export default function Layout({ children, streaming, onToggleStream, onInjectFr
         padding: '0 24px', height: '60px', display: 'flex', alignItems: 'center',
         gap: '16px', flexShrink: 0, position: 'sticky', top: 0, zIndex: 100,
       }}>
+        {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '36px', height: '36px',
@@ -29,8 +33,8 @@ export default function Layout({ children, streaming, onToggleStream, onInjectFr
             justifyContent: 'center', fontSize: '18px', fontWeight: '900', color: '#fff',
           }}>A</div>
           <div>
-            <div style={{ fontWeight: '800', fontSize: '16px', letterSpacing: '-0.02em' }}>ArgusAI</div>
-            <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '-2px' }}>Fraud Detection & Risk Management</div>
+            <div style={{ fontWeight: '800', fontSize: '20px', letterSpacing: '-0.02em' }}>ArgusAI</div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '-2px' }}>Fraud Detection & Risk Management</div>
           </div>
         </div>
 
@@ -50,19 +54,21 @@ export default function Layout({ children, streaming, onToggleStream, onInjectFr
           {wsStatus === 'connected' ? 'Live' : wsStatus}
         </div>
 
-        {/* Nav links in header */}
+        {/* Nav — identical style for all tabs, active = surface2 + white text + border */}
         <nav style={{ display: 'flex', gap: '4px', marginLeft: '12px' }}>
           {navItems.map(item => {
             const active = location.pathname === item.path
             return (
               <Link key={item.path} to={item.path} style={{
-                padding: '6px 14px', borderRadius: '6px', textDecoration: 'none',
-                fontSize: '13px', fontWeight: active ? '600' : '400',
+                padding: '5px 11px', borderRadius: '6px', textDecoration: 'none',
+                fontSize: '12px', fontWeight: active ? '600' : '400',
                 background: active ? 'var(--surface2)' : 'transparent',
-                color: active ? '#fff' : 'var(--muted)',
-                border: active ? '1px solid var(--border)' : '1px solid transparent',
+                color:      active ? '#fff'            : 'var(--muted)',
+                border:     active ? '1px solid var(--border)' : '1px solid transparent',
+                display: 'flex', alignItems: 'center', gap: '5px',
               }}>
-                {item.icon} {item.label}
+                <span>{item.icon}</span>
+                <span>{item.label}</span>
               </Link>
             )
           })}
@@ -70,9 +76,10 @@ export default function Layout({ children, streaming, onToggleStream, onInjectFr
 
         <div style={{ flex: 1 }} />
 
-        {/* Action buttons — same as your original */}
-        <button className="btn btn-ghost" onClick={onSimulate}>⚡ Simulate</button>
-        <button className="btn btn-danger" onClick={onInjectFraud}>🚨 Inject Fraud</button>
+        {/* Action buttons */}
+        <button className="btn btn-primary" onClick={onNewTransaction}>💳 New Transaction</button>
+        <button className="btn btn-ghost"   onClick={onSimulate}>⚡ Simulate</button>
+        <button className="btn btn-danger"  onClick={onInjectFraud}>🚨 Inject Fraud</button>
         <button className={`btn ${streaming ? 'btn-ghost' : 'btn-success'}`} onClick={onToggleStream}>
           {streaming ? '⏸ Pause' : '▶ Resume'} Stream
         </button>

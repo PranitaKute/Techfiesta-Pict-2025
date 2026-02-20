@@ -1,16 +1,18 @@
 """
 ArgusAI — FastAPI Backend
 Endpoints:
-  POST /api/transaction         → analyze single transaction
-  POST /api/transaction/fraud   → inject a fraud transaction (demo)
-  GET  /api/transactions        → recent transaction history
-  GET  /api/stats               → system statistics
-  GET  /api/user/{id}           → user risk profile
-  POST /api/otp/verify          → verify OTP
-  WS   /ws/stream               → live transaction WebSocket feed
+  POST /api/transaction               → analyze single transaction
+  POST /api/transaction/fraud         → inject a fraud transaction (demo)
+  GET  /api/transactions              → recent transaction history
+  GET  /api/stats                     → system statistics
+  GET  /api/user/{id}                 → user risk profile
+  POST /api/otp/verify                → verify OTP
+  POST /api/razorpay/create-order     → create Razorpay order
+  POST /api/razorpay/verify-and-score → verify payment + fraud score
+  WS   /ws/stream                     → live transaction WebSocket feed
 """
 
-import sys, os, asyncio, json
+import sys, os, asyncio, json, hmac, hashlib, random
 from datetime import datetime
 from typing import Optional
 from dotenv import load_dotenv
@@ -20,7 +22,9 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks
+import razorpay
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -29,6 +33,12 @@ from backend.database            import (log_transaction, get_recent_transaction
                                           get_stats, get_user_profile, get_risk_trend)
 from backend.alert               import send_otp_alert, send_block_alert, verify_otp
 from backend.transaction_stream  import generate_live_transaction
+
+# ─── Razorpay Client ──────────────────────────────────────────────────────────
+razorpay_client = razorpay.Client(auth=(
+    os.getenv("RAZORPAY_KEY_ID"),
+    os.getenv("RAZORPAY_KEY_SECRET"),
+))
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -130,6 +140,21 @@ class StreamControl(BaseModel):
     action:   str    = "start"   # "start" | "stop"
     interval: float  = 3.0
 
+class RazorpayOrderRequest(BaseModel):
+    amount:            float
+    merchant_category: str = "Shopping"
+    transaction_city:  str = "Mumbai"
+    device_type:       str = "Mobile"
+
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_order_id:   str
+    razorpay_payment_id: str
+    razorpay_signature:  str
+    amount:              float
+    merchant_category:   str = "Shopping"
+    transaction_city:    str = "Mumbai"
+    device_type:         str = "Mobile"
+
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/")
@@ -179,19 +204,12 @@ async def simulate_transaction():
 @app.post("/api/transaction/user-initiated")
 async def user_initiated_transaction(txn_input: TransactionInput):
     """User-initiated transaction (from demo form)."""
-    import random
     txn = txn_input.dict()
-    
-    # Generate transaction ID and timestamp with better formatting
+
     if not txn.get("transaction_id"):
-        # Use a 6-digit code after TXN for better readability
-        import random
-        random_suffix = random.randint(100000, 999999)
-        txn["transaction_id"] = f"TXN{random_suffix}"
+        txn["transaction_id"] = f"TXN{random.randint(100000, 999999)}"
     if not txn.get("timestamp"):
         txn["timestamp"] = datetime.utcnow().isoformat()
-    
-    # Fill missing fields with realistic defaults
     if not txn.get("user_id"):
         txn["user_id"] = random.randint(1000, 9999)
     if not txn.get("distance_from_home_km"):
@@ -207,14 +225,15 @@ async def user_initiated_transaction(txn_input: TransactionInput):
     if txn.get("is_weekend") is None:
         txn["is_weekend"] = 1 if txn.get("transaction_day", 0) >= 5 else 0
     if txn.get("is_night") is None:
-        txn["is_night"] = 1 if txn.get("transaction_hour", 12) in range(20, 24) or txn.get("transaction_hour", 12) in range(0, 6) else 0
+        hour = txn.get("transaction_hour", 12)
+        txn["is_night"] = 1 if hour in range(20, 24) or hour in range(0, 6) else 0
     if txn.get("daily_txn_count") is None:
         txn["daily_txn_count"] = random.randint(1, 10)
     if not txn.get("avg_amount_7d"):
         txn["avg_amount_7d"] = txn.get("amount", 1000)
     if not txn.get("amount_vs_avg_ratio"):
         txn["amount_vs_avg_ratio"] = round(txn.get("amount", 1000) / max(txn.get("avg_amount_7d", 1), 1), 2)
-    
+
     result = await process_and_broadcast(txn)
     return {"transaction": txn, "result": result, "source": "user"}
 
@@ -262,13 +281,116 @@ async def control_stream(body: StreamControl):
     return {"status": "no change"}
 
 
+# ─── Razorpay Routes ──────────────────────────────────────────────────────────
+@app.post("/api/razorpay/create-order")
+async def razorpay_create_order(body: RazorpayOrderRequest):
+    """Creates a Razorpay order. Frontend uses order_id to open Checkout popup."""
+    try:
+        order = razorpay_client.order.create({
+            "amount":          int(body.amount * 100),  # paise
+            "currency":        "INR",
+            "payment_capture": 1,
+            "notes": {
+                "merchant_category": body.merchant_category,
+                "transaction_city":  body.transaction_city,
+                "device_type":       body.device_type,
+            }
+        })
+        return {
+            "order_id": order["id"],
+            "amount":   body.amount,
+            "currency": "INR",
+            "key_id":   os.getenv("RAZORPAY_KEY_ID"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Razorpay order creation failed: {e}")
+
+
+@app.post("/api/razorpay/verify-and-score")
+async def razorpay_verify_and_score(body: RazorpayVerifyRequest):
+    """Verifies Razorpay signature, fetches payment, enriches + fraud-scores it."""
+
+    # ── 1. Signature verification ─────────────────────────────────────────────
+    secret   = os.getenv("RAZORPAY_KEY_SECRET", "")
+    expected = hmac.new(
+        secret.encode(),
+        f"{body.razorpay_order_id}|{body.razorpay_payment_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, body.razorpay_signature):
+        raise HTTPException(status_code=400, detail="Invalid payment signature — possible tampering detected")
+
+    # ── 2. Fetch payment details from Razorpay ────────────────────────────────
+    try:
+        payment = razorpay_client.payment.fetch(body.razorpay_payment_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch payment from Razorpay: {e}")
+
+    # ── 3. Enrich with fraud features ─────────────────────────────────────────
+    created_at  = datetime.fromtimestamp(payment["created_at"])
+    txn_hour    = created_at.hour
+    txn_day     = created_at.weekday()
+    is_weekend  = 1 if txn_day >= 5 else 0
+    is_night    = 1 if txn_hour < 6 or txn_hour >= 22 else 0
+    amount      = payment["amount"] / 100
+
+    method_map = {
+        "card": "Credit Card", "upi": "UPI",
+        "netbanking": "Net Banking", "wallet": "Wallet", "emi": "EMI",
+    }
+    payment_type = method_map.get(payment.get("method", ""), "UPI")
+
+    distance_from_home = round(random.uniform(0.5, 35.0), 2)
+    avg_amount_7d      = round(random.uniform(500, 15000), 2)
+    amount_vs_avg      = round(amount / max(avg_amount_7d, 1), 4)
+    daily_txn_count    = random.randint(1, 12)
+    device_mismatch    = random.choices([0, 1], weights=[85, 15])[0]
+    card_age_days      = random.randint(30, 2000)
+
+    txn = {
+        "transaction_id":        f"RPY-{body.razorpay_payment_id[-8:].upper()}",
+        "user_id":               random.randint(1000, 9999),
+        "timestamp":             created_at.isoformat(),
+        "amount":                amount,
+        "payment_type":          payment_type,
+        "merchant_category":     body.merchant_category,
+        "transaction_city":      body.transaction_city,
+        "distance_from_home_km": distance_from_home,
+        "device_type":           body.device_type,
+        "device_mismatch":       device_mismatch,
+        "card_age_days":         card_age_days,
+        "transaction_hour":      txn_hour,
+        "transaction_day":       txn_day,
+        "is_weekend":            is_weekend,
+        "is_night":              is_night,
+        "daily_txn_count":       daily_txn_count,
+        "avg_amount_7d":         avg_amount_7d,
+        "amount_vs_avg_ratio":   amount_vs_avg,
+    }
+
+    # ── 4. Run through existing fraud pipeline ────────────────────────────────
+    result = await process_and_broadcast(txn)
+
+    return {
+        "transaction": txn,
+        "result":      result,
+        "razorpay": {
+            "payment_id": body.razorpay_payment_id,
+            "order_id":   body.razorpay_order_id,
+            "method":     payment.get("method"),
+            "status":     payment.get("status"),
+        },
+        "source": "razorpay",
+    }
+
+
 # ─── WebSocket endpoint ───────────────────────────────────────────────────────
 @app.websocket("/ws/stream")
 async def websocket_stream(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep alive / receive control messages
             data = await websocket.receive_text()
             msg  = json.loads(data)
             if msg.get("action") == "ping":
@@ -277,11 +399,10 @@ async def websocket_stream(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-# ─── Startup ──────────────────────────────────────────────────────────────────
+# ─── Startup / Shutdown ───────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
     print("🚀 ArgusAI API starting up...")
-    # Auto-start streaming on launch
     global _streaming, _stream_task
     _streaming   = True
     _stream_task = asyncio.create_task(_auto_stream(3.0))

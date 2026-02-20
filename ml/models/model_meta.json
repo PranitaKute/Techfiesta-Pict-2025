@@ -33,10 +33,10 @@
     "merchant_category",
     "device_type"
   ],
-  "ae_threshold": 0.07781589031219482,
-  "roc_auc": 1.0,
-  "avg_precision": 0.9994,
-  "trained_at": "2026-02-19T15:41:48.289671",
+  "ae_threshold": 0.07382964268326757,
+  "roc_auc": 0.9999,
+  "avg_precision": 0.9993,
+  "trained_at": "2026-02-20T02:48:14.388948",
   "n_train": 40000,
   "n_test": 10000,
   "fraud_rate": 0.06

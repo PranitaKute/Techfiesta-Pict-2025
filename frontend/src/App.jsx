@@ -10,6 +10,7 @@ import SearchFilter from "./components/SearchFilter.jsx";
 import NewTransactionModal from "./components/NewTransactionModal.jsx";
 import TransactionsPage from "./pages/TransactionsPage";
 import AnalyticsPage    from "./pages/AnalyticsPage";
+import Razorpaytab from "./components/Razorpaytab.jsx";
 
 const API = "http://localhost:8000";
 const WS  = "ws://localhost:8000/ws/stream";
@@ -403,6 +404,8 @@ export default function App() {
         } />
         <Route path="/transactions" element={<TransactionsPage {...sharedProps} />} />
         <Route path="/analytics" element={<AnalyticsPage {...sharedProps} />} />
+
+        <Route path="/razorpay" element={<Razorpaytab />} />
       </Routes>
     </BrowserRouter>
   );

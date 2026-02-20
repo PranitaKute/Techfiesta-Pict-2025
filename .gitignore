@@ -23,3 +23,7 @@ frontend/node_modules/
 # Build
 dist/
 build/
+backend/*.db
+ml/models/*.joblib
+ml/models/*.keras
+ml/models/*.h5

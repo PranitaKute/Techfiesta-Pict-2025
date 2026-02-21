@@ -4,7 +4,7 @@ const navItems = [
   { path: '/',             label: 'Dashboard',    icon: '📊' },
   { path: '/transactions', label: 'Transactions', icon: '💳' },
   { path: '/analytics',    label: 'Analytics',    icon: '📈' },
-  { path: '/razorpay',     label: 'Razorpay',     icon: '⚡' },
+  // { path: '/razorpay',     label: 'Razorpay',     icon: '⚡' },
 ]
 
 export default function Layout({ children, streaming, onToggleStream, onInjectFraud, onSimulate, onNewTransaction, wsStatus }) {
@@ -77,7 +77,7 @@ export default function Layout({ children, streaming, onToggleStream, onInjectFr
         <div style={{ flex: 1 }} />
 
         {/* Action buttons */}
-        <button className="btn btn-primary" onClick={onNewTransaction}>💳 New Transaction</button>
+        {/* <button className="btn btn-primary" onClick={onNewTransaction}>💳 New Transaction</button> */}
         <button className="btn btn-ghost"   onClick={onSimulate}>⚡ Simulate</button>
         <button className="btn btn-danger"  onClick={onInjectFraud}>🚨 Inject Fraud</button>
         <button className={`btn ${streaming ? 'btn-ghost' : 'btn-success'}`} onClick={onToggleStream}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Link, useLocation, useParams, useNavigate } from "react-router-dom";
 import StatsBar          from "./components/StatsBar.jsx";
 import RiskGauge         from "./components/RiskGauge.jsx";
 import ShapPanel         from "./components/ShapPanel.jsx";
@@ -11,6 +11,7 @@ import NewTransactionModal from "./components/NewTransactionModal.jsx";
 import TransactionsPage  from "./pages/TransactionsPage";
 import AnalyticsPage     from "./pages/AnalyticsPage";
 import Razorpaytab       from "./components/Razorpaytab.jsx";
+import LoginPage         from "./pages/LoginPage.jsx";
 
 const API = "http://localhost:8000";
 const WS  = "ws://localhost:8000/ws/stream";
@@ -45,6 +46,50 @@ function NavLinks() {
         );
       })}
     </nav>
+  );
+}
+
+// Transaction Detail Page Component
+function TransactionDetailPage({ transactions }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const transaction = transactions.find(t => t.transaction_id === id);
+
+  if (!transaction) {
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+        <header style={{
+          background: "var(--surface)", borderBottom: "1px solid var(--border)",
+          padding: "0 24px", height: "60px",
+          display: "flex", alignItems: "center", gap: "16px",
+          flexShrink: 0, position: "sticky", top: 0, zIndex: 100,
+        }}>
+          <button onClick={() => navigate("/transactions")} className="btn btn-ghost" style={{ marginRight: "auto" }}>← Back</button>
+        </header>
+        <main style={{ flex: 1, padding: "40px 24px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ fontSize: "32px", marginBottom: "16px" }}>🔍</div>
+          <div style={{ color: "var(--muted)", fontSize: "16px" }}>Transaction not found</div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+      <header style={{
+        background: "var(--surface)", borderBottom: "1px solid var(--border)",
+        padding: "0 24px", height: "60px",
+        display: "flex", alignItems: "center", gap: "16px",
+        flexShrink: 0, position: "sticky", top: 0, zIndex: 100,
+      }}>
+        <button onClick={() => navigate("/transactions")} className="btn btn-ghost">← Back to Transactions</button>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: "12px", color: "var(--muted)" }}>Transaction ID: {transaction.transaction_id}</span>
+      </header>
+      <main style={{ flex: 1, padding: "20px 24px", display: "flex", flexDirection: "column" }}>
+        <TransactionDetail transaction={transaction} onBack={() => navigate("/transactions")} />
+      </main>
+    </div>
   );
 }
 
@@ -208,7 +253,7 @@ export default function App() {
 
       <NavLinks />
       <div style={{ flex: 1 }} />
-      <button className="btn btn-primary" onClick={() => setShowNewTxnModal(true)}>💳 New Transaction</button>
+      <Link to="/login" className="btn btn-ghost" style={{ marginRight: 8 }}>🔐 Sign In</Link>
       <button className="btn btn-ghost"   onClick={simulateOne}>⚡ Simulate</button>
       <button className="btn btn-danger"  onClick={injectFraud}>🚨 Inject Fraud</button>
       <button className={`btn ${streaming ? "btn-ghost" : "btn-success"}`} onClick={toggleStream}>
@@ -270,9 +315,13 @@ export default function App() {
           </div>
         } />
 
+        {/* Pre-screen payment page (user-facing) is served separately at /user.html */}
+
         {/* Transactions & Analytics use <Layout> — no extra header */}
         <Route path="/transactions" element={<TransactionsPage {...sharedProps} />} />
+        <Route path="/transactions/:id" element={<TransactionDetailPage {...sharedProps} />} />
         <Route path="/analytics"    element={<AnalyticsPage    {...sharedProps} />} />
+        <Route path="/login"        element={<LoginPage />} />
 
         {/* Razorpay — standalone header */}
         <Route path="/razorpay" element={

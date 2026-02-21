@@ -1,0 +1,414 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ArgusAI — User Payment</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Inter, system-ui, Arial; background: #0f172a; color: #e6eef8; margin: 0; padding: 24px; }
+    .container { max-width: 520px; margin: 0 auto; }
+    .card { border-radius: 12px; background: #071029; padding: 24px; border: 1px solid #22324a; }
+    h2 { margin: 0 0 12px 0; font-size: 24px; }
+    label { display: block; color: #9aa6bf; font-size: 13px; margin: 12px 0 6px 0; font-weight: 600; }
+    input, select { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #22324a; background: #071a2b; color: #e6eef8; font-size: 14px; }
+    input:focus, select:focus { outline: none; border-color: #3b82f6; }
+    button { padding: 10px 14px; border-radius: 8px; border: none; color: white; background: #16a34a; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+    button:hover { background: #15803d; }
+    button:disabled { background: #6b7280; cursor: not-allowed; }
+    .btn-ghost { background: #334155; color: #e6eef8; }
+    .btn-ghost:hover { background: #475569; }
+    .muted { color: #9aa6bf; font-size: 13px; }
+    .warn { color: #f59e0b; }
+    .block { color: #ef4444; }
+    .allow { color: #16a34a; }
+    .form-group { margin-bottom: 12px; }
+    .hidden { display: none !important; }
+    .status { padding: 10px; border-radius: 8px; background: #051028; margin-top: 12px; font-size: 13px; }
+    .button-group { display: flex; gap: 8px; margin-top: 12px; }
+    .button-group button { flex: 1; }
+    .user-info { background: #051028; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 12px; }
+    .user-info strong { color: #e6eef8; }
+    .device-group { display: flex; gap: 8px; margin-top: 6px; }
+    .device-btn { flex: 1; padding: 8px; background: #051028; border: 1px solid #22324a; color: #9aa6bf; border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 13px; }
+    .device-btn.active { border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- LOGIN FORM -->
+    <div id="loginForm" class="card">
+      <h2>ArgusAI Payment</h2>
+      <p class="muted">Sign in to make a payment</p>
+
+      <div class="form-group">
+        <label>UPI ID</label>
+        <input id="upiId" type="text" placeholder="user@upi" />
+      </div>
+
+      <div class="form-group">
+        <label>Email</label>
+        <input id="email" type="email" placeholder="user@example.com" />
+      </div>
+
+      <div class="form-group">
+        <label>Phone Number</label>
+        <input id="phone" type="tel" placeholder="+91 9876543210" />
+      </div>
+
+      <div id="loginStatus" class="muted"></div>
+
+      <div class="button-group">
+        <button id="loginBtn">Sign In</button>
+        <button id="demoBtn" class="btn-ghost">Demo (Skip)</button>
+      </div>
+    </div>
+
+    <!-- TRANSACTION FORM (shown after login) -->
+    <div id="txnForm" class="card hidden">
+      <h2>Make a Payment</h2>
+
+      <div class="user-info">
+        Logged in as: <strong id="userDisplay"></strong>
+      </div>
+
+      <div class="form-group">
+        <label>Amount (₹)</label>
+        <input id="amount" type="number" step="0.01" placeholder="Enter amount" />
+      </div>
+
+      <div class="form-group">
+        <label>Recipient</label>
+        <input id="recipient" placeholder="Account / UPI ID" />
+      </div>
+
+      <div class="form-group">
+        <label>Merchant Category</label>
+        <select id="merchantCategory">
+          <option>Shopping</option>
+          <option>Food & Dining</option>
+          <option>Travel</option>
+          <option>Electronics</option>
+          <option>Healthcare</option>
+          <option>Entertainment</option>
+          <option>Fuel</option>
+          <option>Education</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>City</label>
+        <select id="transactionCity">
+          <option>Mumbai</option>
+          <option>Delhi</option>
+          <option>Bangalore</option>
+          <option>Hyderabad</option>
+          <option>Chennai</option>
+          <option>Kolkata</option>
+          <option>Pune</option>
+          <option>Ahmedabad</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Device Type</label>
+        <div class="device-group">
+          <button type="button" id="deviceMobile" class="device-btn active">📱 Mobile</button>
+          <button type="button" id="deviceDesktop" class="device-btn">🖥 Desktop</button>
+          <button type="button" id="deviceTablet" class="device-btn">📲 Tablet</button>
+        </div>
+      </div>
+
+      <div id="status" class="muted"></div>
+
+      <div class="button-group">
+        <button id="pay">💳 Pay with Razorpay</button>
+        <button id="logout" class="btn-ghost">Sign Out</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = window.location.origin.replace(/:\d+$/, ':8000');
+    
+    // DOM elements
+    const loginForm = document.getElementById('loginForm');
+    const txnForm = document.getElementById('txnForm');
+    const upiIdEl = document.getElementById('upiId');
+    const emailEl = document.getElementById('email');
+    const phoneEl = document.getElementById('phone');
+    const loginBtn = document.getElementById('loginBtn');
+    const demoBtn = document.getElementById('demoBtn');
+    const loginStatus = document.getElementById('loginStatus');
+    
+    const amountEl = document.getElementById('amount');
+    const recipientEl = document.getElementById('recipient');
+    const merchantCategoryEl = document.getElementById('merchantCategory');
+    const transactionCityEl = document.getElementById('transactionCity');
+    const deviceMobileBtn = document.getElementById('deviceMobile');
+    const deviceDesktopBtn = document.getElementById('deviceDesktop');
+    const deviceTabletBtn = document.getElementById('deviceTablet');
+    const statusEl = document.getElementById('status');
+    const payBtn = document.getElementById('pay');
+    const logoutBtn = document.getElementById('logout');
+    const userDisplay = document.getElementById('userDisplay');
+
+    let currentUser = null;
+    let lastResult = null;
+    let debounce = null;
+    let deviceType = 'Mobile';
+
+    function setStatus(txt, cls) {
+      statusEl.innerHTML = `<div class="status">${txt}</div>`;
+      if (cls === 'OTP') payBtn.style.background = '#f97316';
+      else if (cls === 'BLOCK') payBtn.style.background = '#ef4444';
+      else if (cls === 'ALLOW') payBtn.style.background = '#16a34a';
+    }
+
+    function setLoginStatus(txt, isError = false) {
+      loginStatus.innerHTML = txt;
+      loginStatus.style.color = isError ? '#ef4444' : '#16a34a';
+    }
+
+    function showLoginForm() {
+      loginForm.classList.remove('hidden');
+      txnForm.classList.add('hidden');
+      currentUser = null;
+      upiIdEl.value = '';
+      emailEl.value = '';
+      phoneEl.value = '';
+      loginStatus.innerHTML = '';
+    }
+
+    function showTxnForm() {
+      loginForm.classList.add('hidden');
+      txnForm.classList.remove('hidden');
+      userDisplay.textContent = currentUser.upiId;
+      amountEl.value = '';
+      recipientEl.value = '';
+      statusEl.innerHTML = '';
+      lastResult = null;
+      payBtn.disabled = false;
+      payBtn.style.background = '#16a34a';
+    }
+
+    function handleLogin() {
+      const upi = upiIdEl.value.trim();
+      const em = emailEl.value.trim();
+      const ph = phoneEl.value.trim();
+
+      if (!upi || !em || !ph) {
+        setLoginStatus('Please fill all fields', true);
+        return;
+      }
+
+      if (!upi.includes('@')) {
+        setLoginStatus('Invalid UPI ID', true);
+        return;
+      }
+      if (!em.includes('@')) {
+        setLoginStatus('Invalid email', true);
+        return;
+      }
+
+      currentUser = { upiId: upi, email: em, phone: ph };
+      setLoginStatus('✅ Logged in successfully');
+      setTimeout(showTxnForm, 800);
+    }
+
+    // Load Razorpay SDK
+    function loadRazorpayScript() {
+      return new Promise((resolve) => {
+        if (document.getElementById('razorpay-checkout-js')) {
+          resolve(true);
+          return;
+        }
+        const script = document.createElement('script');
+        script.id = 'razorpay-checkout-js';
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+        document.body.appendChild(script);
+      });
+    }
+
+    async function preScreen() {
+      const amount = parseFloat(amountEl.value || 0);
+      const recipient = recipientEl.value.trim();
+      if (!amount || !recipient) return;
+
+      const body = {
+        amount,
+        recipient,
+        timestamp: new Date().toISOString(),
+        user_id: currentUser.upiId,
+      };
+
+      setStatus('🔍 Analyzing transaction...', '');
+      try {
+        const res = await fetch(API + '/api/pre-screen', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        lastResult = data;
+        const decisionTxt = `<span class="${
+          data.decision === 'ALLOW' ? 'allow' : data.decision === 'OTP' ? 'warn' : 'block'
+        }">Decision: ${data.decision}</span> — Risk: ${data.risk_score.toFixed(1)}`;
+        setStatus(decisionTxt, data.decision);
+        payBtn.disabled = data.decision === 'BLOCK';
+      } catch (e) {
+        setStatus('Pre-screen failed: ' + e.message);
+      }
+    }
+
+    async function handlePay() {
+      const amount = parseFloat(amountEl.value);
+      if (!amount || amount <= 0) {
+        setStatus('⚠️ Enter a valid amount > 0');
+        return;
+      }
+
+      if (!lastResult) {
+        setStatus('⚠️ Please wait for pre-screen result');
+        return;
+      }
+
+      if (lastResult.decision === 'BLOCK') {
+        setStatus('❌ Transaction blocked: High fraud risk detected', 'BLOCK');
+        payBtn.disabled = true;
+        return;
+      }
+
+      payBtn.disabled = true;
+      setStatus('<span style="display: inline-block;"><span class="spinner"></span> Loading Razorpay...</span>');
+
+      try {
+        // Load Razorpay SDK
+        const ok = await loadRazorpayScript();
+        if (!ok) throw new Error('Could not load Razorpay Checkout');
+
+        // Create order
+        const orderRes = await fetch(API + '/api/razorpay/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            amount: amount,
+            merchant_category: merchantCategoryEl.value,
+            transaction_city: transactionCityEl.value,
+            device_type: deviceType,
+          }),
+        });
+
+        if (!orderRes.ok) {
+          const err = await orderRes.json();
+          throw new Error(err.detail || 'Order creation failed');
+        }
+
+        const order = await orderRes.json();
+
+        // Open Razorpay Checkout
+        await new Promise((resolve, reject) => {
+          const rzp = new window.Razorpay({
+            key: order.key_id,
+            amount: order.amount * 100, // In paise
+            currency: order.currency,
+            order_id: order.order_id,
+            name: 'ArgusAI',
+            description: `Payment to ${recipientEl.value} - ${merchantCategoryEl.value}`,
+            theme: { color: '#3b82f6' },
+
+            handler: async (response) => {
+              try {
+                // Verify and score payment
+                const scoreRes = await fetch(API + '/api/razorpay/verify-and-score', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                    amount: amount,
+                    merchant_category: merchantCategoryEl.value,
+                    transaction_city: transactionCityEl.value,
+                    device_type: deviceType,
+                  }),
+                });
+
+                if (!scoreRes.ok) {
+                  const err = await scoreRes.json();
+                  throw new Error(err.detail || 'Scoring failed');
+                }
+
+                const scored = await scoreRes.json();
+                const risk = scored.result?.risk_level || 'LOW';
+                const action = scored.result?.action || 'ALLOW';
+                const fraud = ((scored.result?.fraud_probability || 0) * 100).toFixed(1);
+                
+                setStatus(`✅ Payment successful!<br>Fraud Score: ${fraud}% | Risk: ${risk} | Action: ${action}`, 'ALLOW');
+                
+                // Clear form
+                amountEl.value = '';
+                recipientEl.value = '';
+                resolve();
+              } catch (e) {
+                reject(e);
+              }
+            },
+
+            modal: {
+              ondismiss: () => reject(new Error('Payment cancelled')),
+            },
+          });
+          rzp.open();
+        });
+      } catch (e) {
+        if (!e.message?.includes('cancelled')) {
+          setStatus(`❌ ${e.message}`);
+        }
+      } finally {
+        payBtn.disabled = false;
+        payBtn.style.background = '#16a34a';
+      }
+    }
+
+    // Device type selection
+    [deviceMobileBtn, deviceDesktopBtn, deviceTabletBtn].forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        [deviceMobileBtn, deviceDesktopBtn, deviceTabletBtn].forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        deviceType = btn.textContent.includes('Mobile') ? 'Mobile' : 
+                     btn.textContent.includes('Desktop') ? 'Desktop' : 'Tablet';
+      });
+    });
+
+    // Event listeners
+    loginBtn.addEventListener('click', handleLogin);
+    upiIdEl.addEventListener('keypress', (e) => e.key === 'Enter' && handleLogin());
+    
+    demoBtn.addEventListener('click', () => {
+      currentUser = { upiId: 'demo@upi', email: 'demo@demo.com', phone: '+91 9999999999' };
+      showTxnForm();
+    });
+
+    amountEl.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(preScreen, 800);
+    });
+    recipientEl.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(preScreen, 800);
+    });
+
+    payBtn.addEventListener('click', handlePay);
+    logoutBtn.addEventListener('click', showLoginForm);
+
+    // Initialize
+    showLoginForm();
+  </script>
+</body>
+</html>

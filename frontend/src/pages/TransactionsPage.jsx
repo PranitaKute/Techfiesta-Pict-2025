@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Layout    from '../components/Layout'
 import Dashboard from '../components/Dashboard'
 import ShapPanel from '../components/ShapPanel'
@@ -6,6 +7,7 @@ import RiskGauge from '../components/RiskGauge'
 import SearchFilter from '../components/SearchFilter'
 
 export default function TransactionsPage({ transactions, selected, setSelected, wsStatus, streaming, onToggleStream, onInjectFraud, onSimulate }) {
+  const navigate = useNavigate()
   const [filterCriteria, setFilterCriteria] = useState({
     search: "",
     minAmount: "",
@@ -35,6 +37,11 @@ export default function TransactionsPage({ transactions, selected, setSelected, 
 
   const handleFilter = (criteria) => {
     setFilterCriteria(criteria);
+  };
+
+  const handleTransactionClick = (txn) => {
+    setSelected(txn);
+    navigate(`/transactions/${txn.transaction_id}`);
   };
 
   return (
@@ -80,7 +87,7 @@ export default function TransactionsPage({ transactions, selected, setSelected, 
             </div>
           )}
         </div>
-        <Dashboard transactions={filtered} onSelect={setSelected} selected={selected} />
+        <Dashboard transactions={filtered} onSelect={handleTransactionClick} selected={selected} />
         <ShapPanel explanations={selected?.shap_explanation} />
       </div>
     </Layout>

@@ -51,9 +51,37 @@ def init_db():
             last_updated     TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            username      TEXT    UNIQUE NOT NULL,
+            password_hash TEXT    NOT NULL,
+            created_at    TEXT
+        )
+    """)
     conn.commit()
     conn.close()
     print("✅ Database initialised →", DB_PATH)
+
+
+def create_user(username: str, password_hash: str) -> dict:
+    conn = get_conn()
+    now = datetime.utcnow().isoformat()
+    conn.execute(
+        "INSERT OR IGNORE INTO users (username, password_hash, created_at) VALUES (?,?,?)",
+        (username, password_hash, now),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+    conn.close()
+    return dict(row) if row else {}
+
+
+def get_user_by_username(username: str) -> dict | None:
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def log_transaction(txn: dict, result: dict):
@@ -173,3 +201,115 @@ def get_risk_trend(hours: int = 24) -> list[dict]:
 
 # Initialise on import
 init_db()
+
+
+def save_screening_transaction(txn: dict):
+    """Insert a lightweight screening record into the transactions table.
+    Used for pre-screen events (not a completed payment).
+    """
+    conn = get_conn()
+    now = datetime.utcnow().isoformat()
+    conn.execute("""
+        INSERT INTO transactions
+        (transaction_id, user_id, timestamp, amount, payment_type,
+         merchant_category, transaction_city, device_type, device_mismatch,
+         distance_km, is_night, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+    """, (
+        txn.get("transaction_id", f"TXN{int(datetime.utcnow().timestamp())}"),
+        txn.get("user_id", 0),
+        txn.get("timestamp", now),
+        txn.get("amount", 0),
+        txn.get("payment_type", ""),
+        txn.get("merchant_category", ""),
+        txn.get("transaction_city", ""),
+        txn.get("device_type", ""),
+        txn.get("device_mismatch", 0),
+        txn.get("distance_from_home_km", 0),
+        txn.get("is_night", 0),
+        now,
+    ))
+    conn.commit()
+    conn.close()
+
+
+def update_transaction(transaction_id: str, updates: dict):
+    """Update transaction row by `transaction_id` with keys in `updates`.
+    Serializes `shap_explanation` if present.
+    """
+    conn = get_conn()
+    # Prepare updates (serialize shap explanation)
+    upd = dict(updates)
+    if "shap_explanation" in upd:
+        upd["shap_explanation"] = json.dumps(upd["shap_explanation"])
+
+    if not upd:
+        conn.close()
+        return
+
+    set_clause = ", ".join([f"{k}=?" for k in upd.keys()])
+    values = list(upd.values()) + [transaction_id]
+    sql = f"UPDATE transactions SET {set_clause} WHERE transaction_id=?"
+    conn.execute(sql, values)
+    conn.commit()
+    conn.close()
+
+
+# ─── Behavior-Based Risk Detection ────────────────────────────────────────────
+def get_user_frequent_location(user_id: str | int) -> str | None:
+    """Get user's most frequent transaction location (from last 30 days)."""
+    conn = get_conn()
+    row = conn.execute("""
+        SELECT transaction_city, COUNT(*) as cnt
+        FROM transactions
+        WHERE (user_id = ? OR user_id LIKE ?)
+        AND created_at >= datetime('now', '-30 days')
+        AND transaction_city IS NOT NULL AND transaction_city != ''
+        GROUP BY transaction_city
+        ORDER BY cnt DESC
+        LIMIT 1
+    """, (user_id, f"%{user_id}%")).fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def get_user_avg_amount(user_id: str | int) -> float:
+    """Get user's average transaction amount (from last 30 days)."""
+    conn = get_conn()
+    row = conn.execute("""
+        SELECT AVG(amount) as avg
+        FROM transactions
+        WHERE (user_id = ? OR user_id LIKE ?)
+        AND created_at >= datetime('now', '-30 days')
+        AND amount > 0
+    """, (user_id, f"%{user_id}%")).fetchone()
+    conn.close()
+    return row[0] if row and row[0] else 100  # Default to ₹100 if no history
+
+
+def get_user_device_list(user_id: str | int) -> list[str]:
+    """Get list of known devices for user (from last 30 days)."""
+    conn = get_conn()
+    rows = conn.execute("""
+        SELECT DISTINCT device_type
+        FROM transactions
+        WHERE (user_id = ? OR user_id LIKE ?)
+        AND created_at >= datetime('now', '-30 days')
+        AND device_type IS NOT NULL AND device_type != ''
+    """, (user_id, f"%{user_id}%")).fetchall()
+    conn.close()
+    return [row[0] for row in rows] if rows else []
+
+
+def get_user_last_txn_time(user_id: str | int) -> str | None:
+    """Get user's last transaction timestamp."""
+    conn = get_conn()
+    row = conn.execute("""
+        SELECT timestamp
+        FROM transactions
+        WHERE user_id = ? OR user_id LIKE ?
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, (user_id, f"%{user_id}%")).fetchone()
+    conn.close()
+    return row[0] if row else None

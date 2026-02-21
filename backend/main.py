@@ -30,7 +30,13 @@ from pydantic import BaseModel
 
 from ml.predict                  import predict_transaction
 from backend.database            import (log_transaction, get_recent_transactions,
-                                          get_stats, get_user_profile, get_risk_trend)
+                                          get_stats, get_user_profile, get_risk_trend,
+                                          save_screening_transaction, update_transaction,
+                                          create_user, get_user_by_username,
+                                          get_user_frequent_location, get_user_avg_amount,
+                                          get_user_device_list, get_user_last_txn_time)
+import hashlib
+import os
 from backend.alert               import send_otp_alert, send_block_alert, verify_otp
 from backend.transaction_stream  import generate_live_transaction
 
@@ -156,6 +162,12 @@ class RazorpayVerifyRequest(BaseModel):
     device_type:         str = "Mobile"
 
 
+# Simple auth schema
+class AuthIn(BaseModel):
+    username: str
+    password: str
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 @app.get("/")
 async def root():
@@ -254,6 +266,176 @@ async def system_stats():
 async def user_profile(user_id: int):
     profile = get_user_profile(user_id)
     return {"user_id": user_id, "profile": profile}
+
+
+def _hash_password(username: str, password: str) -> str:
+    secret = os.getenv("ARGUS_PW_SALT", "argus_demo_salt")
+    s = f"{password}|{username}|{secret}"
+    return hashlib.sha256(s.encode()).hexdigest()
+
+
+def calculate_behavior_risk(txn: dict) -> tuple[float, list[str]]:
+    """
+    Calculate additional risk from 4 behavior-based rules:
+    🚨 Rule 1: Location Anomaly (if user usually transacts in one city and now in another → +30)
+    🚨 Rule 2: Transaction Spike (if amount > avg_amount * 5 → +25)
+    🚨 Rule 3: Rapid Transactions (if last txn < 30 seconds ago → +20)
+    🚨 Rule 4: New Device (if device is unknown → +15)
+    
+    Returns: (bonus_risk_score, triggered_rules_list)
+    """
+    bonus_risk = 0.0
+    triggered_rules = []
+    user_id = txn.get("user_id", "")
+    
+    if not user_id:
+        return bonus_risk, triggered_rules
+    
+    # Rule 1: Location Anomaly
+    frequent_location = get_user_frequent_location(user_id)
+    current_location = txn.get("transaction_city", "")
+    
+    if frequent_location and current_location and frequent_location != current_location:
+        bonus_risk += 30
+        triggered_rules.append(f"🚨 Location Anomaly: Usually in {frequent_location}, now in {current_location} (+30)")
+    
+    # Rule 2: Transaction Spike
+    avg_amount = get_user_avg_amount(user_id)
+    current_amount = txn.get("amount", 0)
+    
+    if avg_amount > 0 and current_amount > avg_amount * 5:
+        bonus_risk += 25
+        triggered_rules.append(f"🚨 Spike Alert: ₹{current_amount} is {current_amount/avg_amount:.1f}x your average (₹{avg_amount:.0f}) (+25)")
+    
+    # Rule 3: Rapid Transactions
+    last_txn_time_str = get_user_last_txn_time(user_id)
+    if last_txn_time_str:
+        try:
+            last_time = datetime.fromisoformat(last_txn_time_str.replace("Z", "+00:00"))
+            current_time = datetime.fromisoformat(txn.get("timestamp", datetime.utcnow().isoformat()).replace("Z", "+00:00"))
+            time_diff = (current_time - last_time).total_seconds()
+            
+            if 0 < time_diff < 30:
+                bonus_risk += 20
+                triggered_rules.append(f"🚨 Rapid Fire: Transaction within {time_diff:.0f}s of last one (+20)")
+        except (ValueError, TypeError):
+            pass  # Skip if timestamp parsing fails
+    
+    # Rule 4: New Device
+    known_devices = get_user_device_list(user_id)
+    current_device = txn.get("device_type", "")
+    
+    if known_devices and current_device and current_device not in known_devices:
+        bonus_risk += 15
+        triggered_rules.append(f"🚨 New Device: {current_device} not seen before (known: {', '.join(known_devices)}) (+15)")
+    elif not known_devices and current_device:
+        # First transaction - no history yet, but mark it
+        bonus_risk += 0  # Don't penalize first transaction
+    
+    return min(bonus_risk, 100), triggered_rules  # Cap at 100
+
+
+@app.post("/api/register")
+async def register(body: AuthIn):
+    if get_user_by_username(body.username):
+        return {"ok": False, "error": "user_exists"}
+    pw_hash = _hash_password(body.username, body.password)
+    user = create_user(body.username, pw_hash)
+    return {"ok": True, "user": {"id": user.get("id"), "username": user.get("username")}}
+
+
+@app.post("/api/login")
+async def login(body: AuthIn):
+    user = get_user_by_username(body.username)
+    if not user:
+        return {"ok": False, "error": "not_found"}
+    if user.get("password_hash") != _hash_password(body.username, body.password):
+        return {"ok": False, "error": "invalid_credentials"}
+    return {"ok": True, "user": {"id": user.get("id"), "username": user.get("username")}}
+
+
+@app.post("/api/pre-screen")
+async def pre_screen(txn: dict):
+    """
+    Called BEFORE user clicks pay. Saves a SCREENING record, scores it, and broadcasts result.
+    Applies 4 behavior-based fraud detection rules:
+      🚨 Rule 1: Location Anomaly (different city than usual) → +30
+      🚨 Rule 2: Transaction Spike (5x average amount) → +25
+      🚨 Rule 3: Rapid Transactions (< 30sec between txns) → +20
+      🚨 Rule 4: New Device (unknown device) → +15
+    """
+    # Ensure minimal ids/timestamps
+    if not txn.get("transaction_id"):
+        txn["transaction_id"] = f"PRE-{int(datetime.utcnow().timestamp())}-{random.randint(1000,9999)}"
+    if not txn.get("timestamp"):
+        txn["timestamp"] = datetime.utcnow().isoformat()
+    txn["status"] = "SCREENING"
+
+    # 1. Save lightweight screening record
+    save_screening_transaction(txn)
+
+    # 2. Run ML model (sync call)
+    result = predict_transaction(txn)
+    risk_score = result.get("risk_score", 0)
+
+    # 3. Apply behavior-based detection rules
+    behavior_risk, triggered_rules = calculate_behavior_risk(txn)
+    final_risk_score = min(risk_score + behavior_risk, 100)  # Cap at 100
+    
+    # 4. Decision thresholds (using final risk score with behavior rules)
+    if final_risk_score > 85:
+        decision = "BLOCK"
+    elif final_risk_score > 55:
+        decision = "OTP"
+    else:
+        decision = "ALLOW"
+
+    # 5. Prepare explanation with behavior rules
+    shap_explanation = result.get("shap_explanation", [])
+    if triggered_rules:
+        # Add behavior rules to explanation
+        shap_explanation = [
+            {
+                "feature": "behavior_rule",
+                "label": rule.split(" (")[0] if "(" in rule else rule,
+                "shap_val": 0,
+                "direction": "↑ increases",
+                "impact": "HIGH",
+            }
+            for rule in triggered_rules
+        ] + shap_explanation
+
+    # 6. Update DB record with score + decision
+    update_transaction(txn["transaction_id"], {
+        "risk_score":    final_risk_score,
+        "risk_level":    result.get("risk_level"),
+        "action":        decision,
+        "shap_explanation": shap_explanation,
+        "model_version": result.get("model_version"),
+    })
+
+    # 7. Broadcast to WS so operators see screening with behavior flags
+    payload = {**txn, **{
+        "risk_score": final_risk_score,
+        "baseline_risk_score": risk_score,
+        "behavior_risk": behavior_risk,
+        "triggered_rules": triggered_rules,
+        "risk_level": result.get("risk_level"),
+        "action": decision,
+        "shap_explanation": shap_explanation,
+        "processed_at": datetime.utcnow().isoformat(),
+        "status": "SCREENING",
+    }}
+    await manager.broadcast(payload)
+
+    return {
+        "transaction_id": txn["transaction_id"],
+        "risk_score": final_risk_score,
+        "baseline_risk": risk_score,
+        "behavior_risk": behavior_risk,
+        "triggered_rules": triggered_rules,
+        "decision": decision,
+    }
 
 
 @app.post("/api/otp/verify")

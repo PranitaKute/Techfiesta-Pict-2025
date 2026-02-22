@@ -3,9 +3,11 @@ ArgusAI — FastAPI Backend
 Endpoints:
   POST /api/transaction               → analyze single transaction
   POST /api/transaction/fraud         → inject a fraud transaction (demo)
-  GET  /api/transactions              → recent transaction history
+  GET  /api/transactions              → recent transaction history (all users)
+  GET  /api/transactions/user/{id}    → transaction history for a specific user  ← NEW
   GET  /api/stats                     → system statistics
   GET  /api/user/{id}                 → user risk profile
+  GET  /api/user/{id}/summary         → full user summary (spend, risk, top merchant) ← NEW
   POST /api/otp/verify                → verify OTP
   POST /api/razorpay/create-order     → create Razorpay order
   POST /api/razorpay/verify-and-score → verify payment + fraud score
@@ -34,7 +36,8 @@ from backend.database            import (log_transaction, get_recent_transaction
                                           save_screening_transaction, update_transaction,
                                           create_user, get_user_by_username,
                                           get_user_frequent_location, get_user_avg_amount,
-                                          get_user_device_list, get_user_last_txn_time)
+                                          get_user_device_list, get_user_last_txn_time,
+                                          get_user_transactions, get_user_transaction_summary)
 import hashlib
 import os
 from backend.alert               import send_otp_alert, send_block_alert, verify_otp
@@ -151,6 +154,8 @@ class RazorpayOrderRequest(BaseModel):
     merchant_category: str = "Shopping"
     transaction_city:  str = "Mumbai"
     device_type:       str = "Mobile"
+    transaction_id:    Optional[str] = None   # ← ADD
+    user_id:           Optional[str] = None   # ← ADD
 
 class RazorpayVerifyRequest(BaseModel):
     razorpay_order_id:   str
@@ -160,6 +165,8 @@ class RazorpayVerifyRequest(BaseModel):
     merchant_category:   str = "Shopping"
     transaction_city:    str = "Mumbai"
     device_type:         str = "Mobile"
+    transaction_id:      Optional[str] = None  # ← ADD
+    user_id:             Optional[str] = None  # ← ADD
 
 
 # Simple auth schema
@@ -252,7 +259,59 @@ async def user_initiated_transaction(txn_input: TransactionInput):
 
 @app.get("/api/transactions")
 async def recent_transactions(limit: int = 50):
+    """Get recent transactions across ALL users."""
     return {"transactions": get_recent_transactions(limit)}
+
+
+# ─── NEW: Per-User Transaction History ────────────────────────────────────────
+@app.get("/api/transactions/user/{user_id}")
+async def user_transactions(user_id: int, limit: int = 50):
+    """
+    Get transaction history for a SPECIFIC user.
+    
+    WHY: Judges asked for this — operators need to investigate individual users,
+    not just the global feed. You can see all of user 1042's transactions,
+    their risk scores, what got blocked, what needed OTP, etc.
+    
+    Usage: GET /api/transactions/user/1042?limit=20
+    Returns: list of transactions + user summary card
+    """
+    transactions = get_user_transactions(user_id, limit)
+    summary      = get_user_transaction_summary(user_id)
+
+    if not transactions:
+        return {
+            "user_id":      user_id,
+            "summary":      summary,
+            "transactions": [],
+            "message":      f"No transactions found for user {user_id}"
+        }
+
+    return {
+        "user_id":      user_id,
+        "summary":      summary,
+        "transactions": transactions,
+        "count":        len(transactions),
+    }
+
+
+@app.get("/api/user/{user_id}/summary")
+async def user_summary(user_id: int):
+    """
+    Get a full summary card for a user — total spend, risk profile,
+    most-used merchant, city, fraud/block counts. 
+    
+    WHY: This powers the user investigation panel in the dashboard.
+    Instead of scrolling through all transactions, judges/operators
+    get an instant overview of whether a user is high-risk.
+    """
+    summary = get_user_transaction_summary(user_id)
+    profile = get_user_profile(user_id)
+    return {
+        "user_id": user_id,
+        "summary": summary,
+        "risk_profile": profile,
+    }
 
 
 @app.get("/api/stats")
@@ -329,7 +388,6 @@ def calculate_behavior_risk(txn: dict) -> tuple[float, list[str]]:
         bonus_risk += 15
         triggered_rules.append(f"🚨 New Device: {current_device} not seen before (known: {', '.join(known_devices)}) (+15)")
     elif not known_devices and current_device:
-        # First transaction - no history yet, but mark it
         bonus_risk += 0  # Don't penalize first transaction
     
     return min(bonus_risk, 100), triggered_rules  # Cap at 100
@@ -364,25 +422,19 @@ async def pre_screen(txn: dict):
       🚨 Rule 3: Rapid Transactions (< 30sec between txns) → +20
       🚨 Rule 4: New Device (unknown device) → +15
     """
-    # Ensure minimal ids/timestamps
     if not txn.get("transaction_id"):
         txn["transaction_id"] = f"PRE-{int(datetime.utcnow().timestamp())}-{random.randint(1000,9999)}"
     if not txn.get("timestamp"):
         txn["timestamp"] = datetime.utcnow().isoformat()
     txn["status"] = "SCREENING"
 
-    # 1. Save lightweight screening record
     save_screening_transaction(txn)
-
-    # 2. Run ML model (sync call)
     result = predict_transaction(txn)
     risk_score = result.get("risk_score", 0)
 
-    # 3. Apply behavior-based detection rules
     behavior_risk, triggered_rules = calculate_behavior_risk(txn)
-    final_risk_score = min(risk_score + behavior_risk, 100)  # Cap at 100
+    final_risk_score = min(risk_score + behavior_risk, 100)
     
-    # 4. Decision thresholds (using final risk score with behavior rules)
     if final_risk_score > 85:
         decision = "BLOCK"
     elif final_risk_score > 55:
@@ -390,10 +442,8 @@ async def pre_screen(txn: dict):
     else:
         decision = "ALLOW"
 
-    # 5. Prepare explanation with behavior rules
     shap_explanation = result.get("shap_explanation", [])
     if triggered_rules:
-        # Add behavior rules to explanation
         shap_explanation = [
             {
                 "feature": "behavior_rule",
@@ -405,7 +455,6 @@ async def pre_screen(txn: dict):
             for rule in triggered_rules
         ] + shap_explanation
 
-    # 6. Update DB record with score + decision
     update_transaction(txn["transaction_id"], {
         "risk_score":    final_risk_score,
         "risk_level":    result.get("risk_level"),
@@ -414,7 +463,19 @@ async def pre_screen(txn: dict):
         "model_version": result.get("model_version"),
     })
 
-    # 7. Broadcast to WS so operators see screening with behavior flags
+    if decision == "OTP":
+        otp_data = await send_otp_alert(txn, {
+            **result,
+            "risk_score": final_risk_score,
+            "action": "OTP",
+        })
+    elif decision == "BLOCK":
+        asyncio.create_task(send_block_alert(txn, {
+            **result,
+            "risk_score": final_risk_score,
+            "action": "BLOCK",
+        }))
+
     payload = {**txn, **{
         "risk_score": final_risk_score,
         "baseline_risk_score": risk_score,
@@ -492,7 +553,6 @@ async def razorpay_create_order(body: RazorpayOrderRequest):
 async def razorpay_verify_and_score(body: RazorpayVerifyRequest):
     """Verifies Razorpay signature, fetches payment, enriches + fraud-scores it."""
 
-    # ── 1. Signature verification ─────────────────────────────────────────────
     secret   = os.getenv("RAZORPAY_KEY_SECRET", "")
     expected = hmac.new(
         secret.encode(),
@@ -503,13 +563,11 @@ async def razorpay_verify_and_score(body: RazorpayVerifyRequest):
     if not hmac.compare_digest(expected, body.razorpay_signature):
         raise HTTPException(status_code=400, detail="Invalid payment signature — possible tampering detected")
 
-    # ── 2. Fetch payment details from Razorpay ────────────────────────────────
     try:
         payment = razorpay_client.payment.fetch(body.razorpay_payment_id)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Could not fetch payment from Razorpay: {e}")
 
-    # ── 3. Enrich with fraud features ─────────────────────────────────────────
     created_at  = datetime.fromtimestamp(payment["created_at"])
     txn_hour    = created_at.hour
     txn_day     = created_at.weekday()
@@ -531,8 +589,8 @@ async def razorpay_verify_and_score(body: RazorpayVerifyRequest):
     card_age_days      = random.randint(30, 2000)
 
     txn = {
-        "transaction_id":        f"RPY-{body.razorpay_payment_id[-8:].upper()}",
-        "user_id":               random.randint(1000, 9999),
+        "transaction_id":        body.transaction_id or f"RPY-{body.razorpay_payment_id[-8:].upper()}",
+        "user_id":               body.user_id or str(random.randint(1000, 9999)),
         "timestamp":             created_at.isoformat(),
         "amount":                amount,
         "payment_type":          payment_type,
@@ -551,7 +609,6 @@ async def razorpay_verify_and_score(body: RazorpayVerifyRequest):
         "amount_vs_avg_ratio":   amount_vs_avg,
     }
 
-    # ── 4. Run through existing fraud pipeline ────────────────────────────────
     result = await process_and_broadcast(txn)
 
     return {

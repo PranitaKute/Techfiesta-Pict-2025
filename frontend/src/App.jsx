@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Link, useLocation, useParams, useNavigate } from "react-router-dom";
-import StatsBar          from "./components/StatsBar.jsx";
-import RiskGauge         from "./components/RiskGauge.jsx";
-import ShapPanel         from "./components/ShapPanel.jsx";
-import AlertBanner       from "./components/AlertBanner.jsx";
-import Dashboard         from "./components/Dashboard.jsx";
-import TransactionDetail from "./components/TransactionDetail.jsx";
-import SearchFilter      from "./components/SearchFilter.jsx";
+import StatsBar            from "./components/StatsBar.jsx";
+import RiskGauge           from "./components/RiskGauge.jsx";
+import ShapPanel           from "./components/ShapPanel.jsx";
+import AlertBanner         from "./components/AlertBanner.jsx";
+import Dashboard           from "./components/Dashboard.jsx";
+import TransactionDetail   from "./components/TransactionDetail.jsx";
+import SearchFilter        from "./components/SearchFilter.jsx";
 import NewTransactionModal from "./components/NewTransactionModal.jsx";
-import TransactionsPage  from "./pages/TransactionsPage";
-import AnalyticsPage     from "./pages/AnalyticsPage";
-import Razorpaytab       from "./components/Razorpaytab.jsx";
-import LoginPage         from "./pages/LoginPage.jsx";
+import TransactionsPage    from "./pages/TransactionsPage";
+import AnalyticsPage       from "./pages/AnalyticsPage";
+import Razorpaytab         from "./components/Razorpaytab.jsx";
+import LoginPage           from "./pages/LoginPage.jsx";
+import UserHistoryPage     from "./pages/UserHistoryPage.jsx";
+import UserPaymentPage     from "./pages/UserPaymentPage.jsx"; // ← NEW
 
 const API = "http://localhost:8000";
 const WS  = "ws://localhost:8000/ws/stream";
@@ -21,9 +23,9 @@ const navItems = [
   { path: "/transactions", label: "Transactions", icon: "💳" },
   { path: "/analytics",    label: "Analytics",    icon: "📈" },
   { path: "/razorpay",     label: "Razorpay",     icon: "⚡" },
+  { path: "/pay",          label: "User Pay",     icon: "🏦" }, // ← NEW
 ];
 
-// Matches Layout.jsx nav exactly — same active style for all tabs
 function NavLinks() {
   const location = useLocation();
   return (
@@ -49,7 +51,6 @@ function NavLinks() {
   );
 }
 
-// Transaction Detail Page Component
 function TransactionDetailPage({ transactions }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -137,11 +138,13 @@ export default function App() {
       try {
         const txn = JSON.parse(e.data);
         if (txn.action === "pong") return;
-        setTransactions(prev => [txn, ...prev].slice(0, 100));
-        setFilteredTransactions(prev => {
+        // Upsert: replace any existing row with same id, keep latest at top
+        const upsert = (prev) => {
           const without = prev.filter(t => t.transaction_id !== txn.transaction_id);
           return [txn, ...without].slice(0, 100);
-        });
+        };
+        setTransactions(upsert);
+        setFilteredTransactions(upsert);
         setSelected(txn);
       } catch {}
     };
@@ -213,7 +216,6 @@ export default function App() {
     onNewTransaction: () => setShowNewTxnModal(true),
   };
 
-  // Shared header used by Dashboard and Razorpay routes (no <Layout>)
   const Header = () => (
     <header style={{
       background: "var(--surface)", borderBottom: "1px solid var(--border)",
@@ -295,6 +297,22 @@ export default function App() {
                           <span style={{ fontWeight: "600" }}>{item.value}</span>
                         </div>
                       ))}
+                      {selected.user_id && (
+                        <Link
+                          to={`/user/${selected.user_id}`}
+                          style={{
+                            display: "block", marginTop: "4px",
+                            padding: "6px 8px", borderRadius: "6px",
+                            background: "var(--surface2)",
+                            border: "1px solid var(--border)",
+                            color: "#3b82f6", fontSize: "11px",
+                            fontWeight: "600", textDecoration: "none",
+                            textAlign: "center",
+                          }}
+                        >
+                          👤 View User {selected.user_id} History →
+                        </Link>
+                      )}
                     </div>
                   )}
                 </div>
@@ -315,15 +333,14 @@ export default function App() {
           </div>
         } />
 
-        {/* Pre-screen payment page (user-facing) is served separately at /user.html */}
-
-        {/* Transactions & Analytics use <Layout> — no extra header */}
-        <Route path="/transactions" element={<TransactionsPage {...sharedProps} />} />
+        <Route path="/transactions"     element={<TransactionsPage    {...sharedProps} />} />
         <Route path="/transactions/:id" element={<TransactionDetailPage {...sharedProps} />} />
-        <Route path="/analytics"    element={<AnalyticsPage    {...sharedProps} />} />
-        <Route path="/login"        element={<LoginPage />} />
+        <Route path="/analytics"        element={<AnalyticsPage       {...sharedProps} />} />
+        <Route path="/login"            element={<LoginPage />} />
+        <Route path="/user/:user_id"    element={<UserHistoryPage />} />
+        <Route path="/pay"              element={<UserPaymentPage />} />  {/* ← replaces user.html */}
 
-        {/* Razorpay — standalone header */}
+        {/* Razorpay */}
         <Route path="/razorpay" element={
           <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
             <Header />
@@ -333,7 +350,6 @@ export default function App() {
 
       </Routes>
 
-      {/* Modal outside routes — always mounted */}
       <NewTransactionModal
         isOpen={showNewTxnModal}
         onClose={() => setShowNewTxnModal(false)}

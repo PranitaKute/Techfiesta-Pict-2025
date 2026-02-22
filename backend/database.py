@@ -151,6 +151,95 @@ def get_recent_transactions(limit: int = 50) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ─── NEW: User Transaction History ────────────────────────────────────────────
+def get_user_transactions(user_id: int, limit: int = 50) -> list[dict]:
+    """
+    WHY THIS EXISTS:
+    Judges asked for per-user transaction history so operators can investigate
+    a specific user's behaviour over time. This query filters by user_id and
+    returns their transactions newest-first, along with risk scores and actions.
+    This is separate from get_recent_transactions() which shows ALL users.
+    """
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT * FROM transactions
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (user_id, limit)
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_user_transaction_summary(user_id: int) -> dict:
+    """
+    WHY THIS EXISTS:
+    Gives a quick summary card for a specific user — total spend, avg risk,
+    how many were blocked, their most used merchant category, and their most
+    used city. This powers the user profile panel in the dashboard.
+    """
+    conn = get_conn()
+
+    # Basic stats
+    stats_row = conn.execute("""
+        SELECT
+            COUNT(*)            AS total_txns,
+            COALESCE(SUM(amount), 0)  AS total_spend,
+            COALESCE(AVG(risk_score), 0) AS avg_risk,
+            SUM(CASE WHEN action='BLOCK' THEN 1 ELSE 0 END) AS blocked_count,
+            SUM(CASE WHEN action='OTP'   THEN 1 ELSE 0 END) AS otp_count,
+            SUM(CASE WHEN action='ALLOW' THEN 1 ELSE 0 END) AS allowed_count,
+            MAX(created_at) AS last_seen
+        FROM transactions
+        WHERE user_id = ?
+    """, (user_id,)).fetchone()
+
+    # Most common merchant
+    merchant_row = conn.execute("""
+        SELECT merchant_category, COUNT(*) as cnt
+        FROM transactions
+        WHERE user_id = ? AND merchant_category IS NOT NULL AND merchant_category != ''
+        GROUP BY merchant_category
+        ORDER BY cnt DESC
+        LIMIT 1
+    """, (user_id,)).fetchone()
+
+    # Most common city
+    city_row = conn.execute("""
+        SELECT transaction_city, COUNT(*) as cnt
+        FROM transactions
+        WHERE user_id = ? AND transaction_city IS NOT NULL AND transaction_city != ''
+        GROUP BY transaction_city
+        ORDER BY cnt DESC
+        LIMIT 1
+    """, (user_id,)).fetchone()
+
+    # Risk profile from user_risk_profile table
+    profile_row = conn.execute(
+        "SELECT * FROM user_risk_profile WHERE user_id = ?", (user_id,)
+    ).fetchone()
+
+    conn.close()
+
+    stats = dict(stats_row) if stats_row else {}
+    return {
+        "user_id":          user_id,
+        "total_txns":       stats.get("total_txns", 0),
+        "total_spend":      round(stats.get("total_spend", 0), 2),
+        "avg_risk":         round(stats.get("avg_risk", 0), 2),
+        "blocked_count":    stats.get("blocked_count", 0),
+        "otp_count":        stats.get("otp_count", 0),
+        "allowed_count":    stats.get("allowed_count", 0),
+        "last_seen":        stats.get("last_seen", None),
+        "top_merchant":     merchant_row[0] if merchant_row else None,
+        "top_city":         city_row[0] if city_row else None,
+        "fraud_count":      dict(profile_row).get("fraud_count", 0) if profile_row else 0,
+    }
+
+
 def get_stats() -> dict:
     conn = get_conn()
     total  = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]

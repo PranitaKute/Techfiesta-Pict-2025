@@ -269,7 +269,7 @@ export default function App() {
 
         {/* Dashboard */}
         <Route path="/" element={
-          <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+          <div style={{ minHeight: "100vh", background: "var(--bg)" , display: "flex", flexDirection: "column" }}>
             <Header />
             <main style={{ flex: 1, padding: "20px 24px", display: "flex", flexDirection: "column" }}>
               <StatsBar stats={stats} />

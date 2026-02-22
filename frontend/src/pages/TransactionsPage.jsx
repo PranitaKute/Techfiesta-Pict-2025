@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import Layout    from '../components/Layout'
-import Dashboard from '../components/Dashboard'
-import ShapPanel from '../components/ShapPanel'
-import RiskGauge from '../components/RiskGauge'
-import SearchFilter from '../components/SearchFilter'
+import Layout       from '../components/Layout.jsx'
+import Dashboard    from '../components/Dashboard.jsx'
+import ShapPanel    from '../components/ShapPanel.jsx'
+import RiskGauge    from '../components/RiskGauge.jsx'
+import SearchFilter from '../components/SearchFilter.jsx'
 
 export default function TransactionsPage({ transactions, selected, setSelected, wsStatus, streaming, onToggleStream, onInjectFraud, onSimulate }) {
   const navigate = useNavigate()

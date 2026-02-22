@@ -254,7 +254,7 @@ export default function App() {
 
       <NavLinks />
       <div style={{ flex: 1 }} />
-      <Link to="/login" className="btn btn-ghost" style={{ marginRight: 8 }}>🔐 Sign In</Link>
+      {/* <Link to="/login" className="btn btn-ghost" style={{ marginRight: 8 }}>🔐 Sign In</Link> */}
       <button className="btn btn-ghost"   onClick={simulateOne}>⚡ Simulate</button>
       <button className="btn btn-danger"  onClick={injectFraud}>🚨 Inject Fraud</button>
       <button className={`btn ${streaming ? "btn-ghost" : "btn-success"}`} onClick={toggleStream}>

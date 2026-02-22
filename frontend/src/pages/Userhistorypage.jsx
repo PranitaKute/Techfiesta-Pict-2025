@@ -13,7 +13,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-const API = "http://localhost:8000";
+const API = import.meta.env.VITE_API_URL;
 
 const MERCHANTS = ["Shopping","Food & Dining","Travel","Electronics","Healthcare","Entertainment","Fuel","Education","Jewellery","Grocery"];
 const CITIES    = ["Mumbai","Delhi","Bangalore","Hyderabad","Chennai","Kolkata","Pune","Ahmedabad","Lucknow","Jaipur"];
@@ -125,7 +125,7 @@ function OTPModal({ transactionId, onVerified, onCancel }) {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-export default function UserPaymentPage() {
+export default function Userhistorypage() {
   const navigate = useNavigate();
 
   // auth

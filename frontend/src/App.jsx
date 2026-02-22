@@ -12,10 +12,9 @@ import TransactionsPage    from "./pages/TransactionsPage";
 import AnalyticsPage       from "./pages/AnalyticsPage";
 import Razorpaytab         from "./components/Razorpaytab.jsx";
 import LoginPage           from "./pages/LoginPage.jsx";
-import UserHistoryPage     from "./pages/UserHistoryPage.jsx";
 import UserPaymentPage     from "./pages/UserPaymentPage.jsx"; // ← NEW
 
-const API = "http://localhost:8000";
+const API = import.meta.env.VITE_API_URL;
 const WS  = "ws://localhost:8000/ws/stream";
 
 const navItems = [
@@ -337,7 +336,6 @@ export default function App() {
         <Route path="/transactions/:id" element={<TransactionDetailPage {...sharedProps} />} />
         <Route path="/analytics"        element={<AnalyticsPage       {...sharedProps} />} />
         <Route path="/login"            element={<LoginPage />} />
-        <Route path="/user/:user_id"    element={<UserHistoryPage />} />
         <Route path="/pay"              element={<UserPaymentPage />} />  {/* ← replaces user.html */}
 
         {/* Razorpay */}
